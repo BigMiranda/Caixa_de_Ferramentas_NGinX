@@ -1,0 +1,5 @@
+{
+  "Cards conectados de um card (parent_relations)": "query { card(id: \"$Card ID$\") { title parent_relations { cards { id title pipe { id name } current_phase { id name } } } } }",
+  "Connected cards of a card, with id and name of the pipe and of the current phase of each card": "query {\n  card(id: \"$Card ID$\") {\n    title\n    parent_relations {\n      cards {\n        id\n        title\n        pipe {\n          id\n          name\n        }\n        current_phase {\n          id\n          name\n        }\n      }\n    }\n  }\n}\n",
+  "Connected cards of a card, with id and name of the pipe, the current phase and the assignees of each card": "query {\n  card(id: \"$Card ID$\") {\n    title\n    parent_relations {\n      cards {\n        id\n        title\n        pipe {\n          id\n          name\n        }\n        current_phase {\n          id\n          name\n        }\n        assignees {\n          id\n          name\n        }\n      }\n    }\n  }\n}\n"
+}

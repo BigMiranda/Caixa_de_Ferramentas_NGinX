@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - "80:80"
+    deploy:
+        resources:
+            limits:
+                memory: 2G
+                cpus: "4.0"
+    depends_on:
+      - streamlit-app
+      - password-app
+      - mutations-app
+
+  lobby:
+    build: ./lobby
+    ports:
+      - "8500:8501"
+    volumes:
+      - ./lobby:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  streamlit-app:
+    build: ./report_generator_connected_cards__from_pipefy_card
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./report_generator_connected_cards__from_pipefy_card:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  password-app:
+    build: ./password_and_hash_2025
+    ports:
+      - "8502:8501"
+    volumes:
+      - ./password_and_hash_2025:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  mutations-app:
+    build: ./execute_multiple_mutations_on_pipefy
+    ports:
+      - "8503:8501"
+    volumes:
+      - ./execute_multiple_mutations_on_pipefy:/app
+    environment:
+      - PYTHONUNBUFFERED=1
