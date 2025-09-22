@@ -35,6 +35,13 @@ Você poderá:
 Este projeto foi desenvolvido para automatizar a execução de mutações em lote no **Pipefy** utilizando **GraphQL**. O sistema divide a query em **super-lotes** e **sub-lotes**, permitindo a execução de várias mutações de maneira eficiente. Ele também exibe o progresso da execução e mantém um log dinâmico com informações detalhadas de cada etapa.
 """,
         "link": "http://localhost/mutations-app/"
+    },
+    {
+        "titulo": "Contador de Texto Avançado",
+        "descricao": """
+Este projeto é uma ferramenta para análise de texto. Ele fornece contagens em tempo real de vários atributos de um texto digitado, ajudando em tarefas como redação, SEO, ou análise de conteúdo.
+""",
+        "link": "http://localhost/character-app/"
     }
 ]
 
