@@ -14,8 +14,8 @@ st.write("Digite seu texto na caixa abaixo para obter contagens detalhadas e an�
 
 # Campo de entrada de texto principal
 text_input = st.text_area(
-    "Insira seu texto principal aqui", 
-    height=250, 
+    "Insira seu texto principal aqui",
+    height=250,
     placeholder="Comece a digitar..."
 )
 
@@ -69,7 +69,7 @@ with st.container(border=True):
                 df_words = df_words.sort_values(by="Frequência", ascending=False).reset_index(drop=True)
                 st.write("### Frequência de Palavras")
                 st.dataframe(df_words, use_container_width=True)
-                
+
                 # Botões de download
                 st.download_button(
                     label="Exportar para CSV",
@@ -77,7 +77,7 @@ with st.container(border=True):
                     file_name="frequencia_palavras.csv",
                     mime="text/csv",
                 )
-                
+
                 output = io.BytesIO()
                 df_words.to_excel(output, index=False)
                 st.download_button(
@@ -106,7 +106,7 @@ with st.container(border=True):
                     file_name="frequencia_letras.csv",
                     mime="text/csv",
                 )
-                
+
                 output = io.BytesIO()
                 df_letters.to_excel(output, index=False)
                 st.download_button(
@@ -144,7 +144,7 @@ with st.container(border=True):
             df_chars = analyze_chars(text_input)
             st.write("### Análise Char a Char do Texto")
             st.dataframe(df_chars, use_container_width=True)
-            
+
             # Botões de download
             st.download_button(
                 label="Exportar para CSV",
@@ -175,7 +175,7 @@ with st.container(border=True):
     with col2:
         st.write("### Texto 2")
         text2 = st.text_area("Insira o segundo texto", height=200, key="text2")
-        
+
     if st.button("Comparar Textos Char a Char"):
         if not text1 or not text2:
             st.warning("Por favor, insira ambos os textos para comparar.")
@@ -187,7 +187,7 @@ with st.container(border=True):
             for i in range(max_len):
                 char1 = text1[i] if i < len(text1) else ""
                 char2 = text2[i] if i < len(text2) else ""
-                
+
                 # Check for "damaging" difference like extra space
                 if char1.isspace() != char2.isspace():
                     shift_detected = True
@@ -195,7 +195,7 @@ with st.container(border=True):
                 difference = ""
                 if char1 != char2:
                     difference = "Sim"
-                
+
                 # Flag all subsequent characters if a damaging difference was found
                 if shift_detected and char1 != char2:
                     difference = "Sim (deslocamento)"
@@ -206,7 +206,7 @@ with st.container(border=True):
                     "Caractere 2": repr(char2),
                     "Diferença": difference
                 })
-            
+
             df_comparison = pd.DataFrame(data)
             st.write("### Tabela de Comparação de Caracteres")
             st.dataframe(df_comparison, use_container_width=True)
@@ -233,7 +233,7 @@ st.markdown("---")
 st.subheader("Limpeza e Normalização do Texto")
 with st.container(border=True):
     st.write("Selecione as opções de limpeza e normalização:")
-    
+
     col1, col2 = st.columns(2)
     with col1:
         ajustar_espacos = st.checkbox("Ajustar espaçamentos", value=True)
@@ -241,14 +241,14 @@ with st.container(border=True):
     with col2:
         ajustar_estranhos = st.checkbox("Ajustar caracteres estranhos", value=True)
         arrumar_nomes = st.checkbox("Arrumar para nomes", value=False)
-        
+
     if st.button("Limpar e Normalizar Texto"):
         cleaned_text = text_input
-        
+
         # Ajustar caracteres estranhos
         if ajustar_estranhos:
             cleaned_text = cleaned_text.replace('\u00A0', ' ').replace('\u200B', '')
-            
+
         # Ajustar caracteres corrompidos
         if ajustar_corrompidos:
             corrupted_map = {
@@ -257,13 +257,13 @@ with st.container(border=True):
                 'ü': 'Ü', 'ï': 'Ï', 'ñ': 'Ñ'
             }
             cleaned_text = cleaned_text.translate(str.maketrans(corrupted_map))
-        
+
         # Ajustar espaçamentos (mantém quebras de linha)
         if ajustar_espacos:
             lines = cleaned_text.split('\n')
             cleaned_lines = [re.sub(r' +', ' ', line.strip()) for line in lines]
             cleaned_text = '\n'.join(cleaned_lines)
-            
+
         # Arrumar para nomes
         if arrumar_nomes:
             # Lista de palavras para manter em minúsculo
@@ -277,16 +277,6 @@ with st.container(border=True):
                 else:
                     cleaned_words.append(word.capitalize())
             cleaned_text = " ".join(cleaned_words)
-        
+
         st.write("### Texto Corrigido")
-        st.text_area(
-            "Resultado da Limpeza",
-            value=cleaned_text,
-            height=300,
-            key="cleaned_text_output"
-        )
-        # Adiciona o botão de copiar
-        if st.button("Copiar Texto Corrigido"):
-            st.session_state.cleaned_text = cleaned_text
-            st.markdown(f'<script>navigator.clipboard.writeText(`{cleaned_text}`);</script>', unsafe_allow_html=True)
-            st.success("Texto copiado para a área de transferência!")
+        st.code(cleaned_text, language='python')
