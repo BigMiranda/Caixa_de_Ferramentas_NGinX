@@ -167,29 +167,64 @@ with st.container(border=True):
 st.markdown("---")
 st.subheader("Comparar Dois Textos")
 with st.container(border=True):
+    st.write("Insira dois textos abaixo para comparar a análise de seus caracteres.")
     col1, col2 = st.columns(2)
     with col1:
         st.write("### Texto 1")
+        text1 = st.text_area("Insira o primeiro texto", height=200, key="text1")
     with col2:
         st.write("### Texto 2")
-    
-    text_input_1, text_input_2 = st.columns(2)
-    with text_input_1:
-        text1 = st.text_area("Insira o primeiro texto", height=200, key="text1")
-    with text_input_2:
         text2 = st.text_area("Insira o segundo texto", height=200, key="text2")
-
+        
     if st.button("Comparar Textos Char a Char"):
         if not text1 or not text2:
             st.warning("Por favor, insira ambos os textos para comparar.")
         else:
-            st.write("### Análise Caractere por Caractere - Texto 1")
-            df_chars1 = analyze_chars(text1)
-            st.dataframe(df_chars1, use_container_width=True)
+            data = []
+            max_len = max(len(text1), len(text2))
+            shift_detected = False
 
-            st.write("### Análise Caractere por Caractere - Texto 2")
-            df_chars2 = analyze_chars(text2)
-            st.dataframe(df_chars2, use_container_width=True)
+            for i in range(max_len):
+                char1 = text1[i] if i < len(text1) else ""
+                char2 = text2[i] if i < len(text2) else ""
+                
+                # Check for "damaging" difference like extra space
+                if char1.isspace() != char2.isspace():
+                    shift_detected = True
+
+                difference = ""
+                if char1 != char2:
+                    difference = "Sim"
+                
+                # Flag all subsequent characters if a damaging difference was found
+                if shift_detected and char1 != char2:
+                    difference = "Sim (deslocamento)"
+
+                data.append({
+                    "Posição": i,
+                    "Caractere 1": repr(char1),
+                    "Caractere 2": repr(char2),
+                    "Diferença": difference
+                })
+            
+            df_comparison = pd.DataFrame(data)
+            st.write("### Tabela de Comparação de Caracteres")
+            st.dataframe(df_comparison, use_container_width=True)
+
+            st.download_button(
+                label="Exportar para CSV",
+                data=df_comparison.to_csv(index=False),
+                file_name="comparacao_caracteres.csv",
+                mime="text/csv",
+            )
+            output = io.BytesIO()
+            df_comparison.to_excel(output, index=False)
+            st.download_button(
+                label="Exportar para Excel",
+                data=output.getvalue(),
+                file_name="comparacao_caracteres.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
 # --------------------------
 # Limpeza e Normalização
