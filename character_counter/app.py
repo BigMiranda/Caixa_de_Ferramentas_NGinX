@@ -223,9 +223,11 @@ with st.container(border=True):
             }
             cleaned_text = cleaned_text.translate(str.maketrans(corrupted_map))
         
-        # Ajustar espaçamentos
+        # Ajustar espaçamentos (mantém quebras de linha)
         if ajustar_espacos:
-            cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+            lines = cleaned_text.split('\n')
+            cleaned_lines = [re.sub(r' +', ' ', line.strip()) for line in lines]
+            cleaned_text = '\n'.join(cleaned_lines)
             
         # Arrumar para nomes
         if arrumar_nomes:
@@ -242,4 +244,14 @@ with st.container(border=True):
             cleaned_text = " ".join(cleaned_words)
         
         st.write("### Texto Corrigido")
-        st.code(cleaned_text, language="text")
+        st.text_area(
+            "Resultado da Limpeza",
+            value=cleaned_text,
+            height=300,
+            key="cleaned_text_output"
+        )
+        # Adiciona o botão de copiar
+        if st.button("Copiar Texto Corrigido"):
+            st.session_state.cleaned_text = cleaned_text
+            st.markdown(f'<script>navigator.clipboard.writeText(`{cleaned_text}`);</script>', unsafe_allow_html=True)
+            st.success("Texto copiado para a área de transferência!")
