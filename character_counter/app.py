@@ -132,8 +132,7 @@ def analyze_chars(text):
             "Código Decimal": ord(char),
             "Hexadecimal": hex(ord(char)),
             "Octal": oct(ord(char)),
-            "Nome Unicode": f"{ord(char):X} {chr(ord(char))}", # Exemplo de info adicional
-            "URL Unicode": f"https://www.compart.com/en/unicode/U+{ord(char):X}",
+            "URL Unicode": f"https://www.compart.com/en/unicode/U+{ord(char):04X}",
         })
     return pd.DataFrame(char_data)
 
