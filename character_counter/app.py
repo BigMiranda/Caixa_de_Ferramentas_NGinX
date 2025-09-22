@@ -4,6 +4,8 @@ import pandas as pd
 from collections import Counter
 import io
 
+st.set_page_config(layout="wide")
+
 # Título da aplicação
 st.title("Analisador de Strings")
 
