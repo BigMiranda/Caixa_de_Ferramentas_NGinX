@@ -37,9 +37,9 @@ Este projeto foi desenvolvido para automatizar a execução de mutações em lot
         "link": "http://localhost/mutations-app/"
     },
     {
-        "titulo": "Contador de Texto Avançado",
+        "titulo": "Analisador de Strings (textos) Avançado",
         "descricao": """
-Este projeto é uma ferramenta para análise de texto. Ele fornece contagens em tempo real de vários atributos de um texto digitado, ajudando em tarefas como redação, SEO, ou análise de conteúdo.
+Uma ferramenta multifuncional para análise de texto. Permite contagem em tempo real de caracteres, palavras e linhas, além de análises avançadas de frequência, inspeção de caracteres e limpeza de texto.
 """,
         "link": "http://localhost/character-app/"
     }

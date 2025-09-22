@@ -1,16 +1,18 @@
 import streamlit as st
 import re
+import pandas as pd
 from collections import Counter
+import io
 
 # Título da aplicação
-st.title("Contador de Texto Avançado")
+st.title("Analisador de Strings")
 
 # Explicação da ferramenta
-st.write("Digite seu texto na caixa abaixo para obter contagens detalhadas em tempo real.")
+st.write("Digite seu texto na caixa abaixo para obter contagens detalhadas e análises avançadas.")
 
-# Campo de entrada de texto
+# Campo de entrada de texto principal
 text_input = st.text_area(
-    "Insira seu texto aqui", 
+    "Insira seu texto principal aqui", 
     height=250, 
     placeholder="Comece a digitar..."
 )
@@ -44,27 +46,199 @@ col1.metric("Linhas", line_count)
 col2.metric("Sentenças", sentence_count)
 col3.metric("Parágrafos", paragraph_count)
 
-# --- Análises Avançadas ---
 
+# --- Seção de Análises Avançadas ---
 st.markdown("---")
-with st.expander("Análises Avançadas de Texto"):
-    st.write(
-        "Clique no botão abaixo para gerar relatórios detalhados sobre a repetição de palavras e letras. "
-        "Esta análise é computada apenas quando o botão é clicado para otimizar o desempenho."
-    )
-    if st.button("Iniciar Análise Avançada"):
-        if not text_input:
-            st.warning("Por favor, digite um texto para iniciar a análise.")
-        else:
-            # Contagem de repetição de palavras (ordenada)
-            st.subheader("Frequência de Palavras")
-            word_counts = Counter(words)
-            sorted_word_counts = sorted(word_counts.items(), key=lambda item: item[1], reverse=True)
-            st.write(sorted_word_counts)
+st.header("Análises Avançadas")
 
-            # Contagem de repetição de letras (ordenada)
-            st.subheader("Frequência de Letras")
-            letters = [c for c in text_input.lower() if c.isalpha()]
-            letter_counts = Counter(letters)
-            sorted_letter_counts = sorted(letter_counts.items(), key=lambda item: item[1], reverse=True)
-            st.write(sorted_letter_counts)
+# --------------------------
+# Frequência de Ocorrências
+# --------------------------
+st.subheader("Frequência de Ocorrências")
+with st.container(border=True):
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Analisar Frequência de Palavras"):
+            if not text_input:
+                st.warning("Por favor, digite um texto para iniciar a análise.")
+            else:
+                word_counts = Counter(words)
+                df_words = pd.DataFrame(word_counts.items(), columns=["Palavra", "Frequência"])
+                df_words = df_words.sort_values(by="Frequência", ascending=False).reset_index(drop=True)
+                st.write("### Frequência de Palavras")
+                st.dataframe(df_words, use_container_width=True)
+                
+                # Botões de download
+                st.download_button(
+                    label="Exportar para CSV",
+                    data=df_words.to_csv(index=False),
+                    file_name="frequencia_palavras.csv",
+                    mime="text/csv",
+                )
+                
+                output = io.BytesIO()
+                df_words.to_excel(output, index=False)
+                st.download_button(
+                    label="Exportar para Excel",
+                    data=output.getvalue(),
+                    file_name="frequencia_palavras.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+    with col2:
+        if st.button("Analisar Frequência de Letras"):
+            if not text_input:
+                st.warning("Por favor, digite um texto para iniciar a análise.")
+            else:
+                letters = [c for c in text_input.lower() if c.isalpha()]
+                letter_counts = Counter(letters)
+                df_letters = pd.DataFrame(letter_counts.items(), columns=["Letra", "Frequência"])
+                df_letters = df_letters.sort_values(by="Frequência", ascending=False).reset_index(drop=True)
+                st.write("### Frequência de Letras")
+                st.dataframe(df_letters, use_container_width=True)
+
+                # Botões de download
+                st.download_button(
+                    label="Exportar para CSV",
+                    data=df_letters.to_csv(index=False),
+                    file_name="frequencia_letras.csv",
+                    mime="text/csv",
+                )
+                
+                output = io.BytesIO()
+                df_letters.to_excel(output, index=False)
+                st.download_button(
+                    label="Exportar para Excel",
+                    data=output.getvalue(),
+                    file_name="frequencia_letras.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+# --------------------------
+# Análise Caractere por Caractere
+# --------------------------
+st.markdown("---")
+st.subheader("Análise Caractere por Caractere")
+
+def analyze_chars(text):
+    if not text:
+        return pd.DataFrame()
+    char_data = []
+    for char in text:
+        char_data.append({
+            "Caractere": char,
+            "Código Decimal": ord(char),
+            "Hexadecimal": hex(ord(char)),
+            "Octal": oct(ord(char)),
+            "Nome Unicode": f"{ord(char):X} {chr(ord(char))}", # Exemplo de info adicional
+            "URL Unicode": f"https://www.compart.com/en/unicode/U+{ord(char):X}",
+        })
+    return pd.DataFrame(char_data)
+
+with st.container(border=True):
+    if st.button("Gerar Análise Char a Char"):
+        if not text_input:
+            st.warning("Por favor, digite um texto para gerar a análise.")
+        else:
+            df_chars = analyze_chars(text_input)
+            st.write("### Análise Char a Char do Texto")
+            st.dataframe(df_chars, use_container_width=True)
+            
+            # Botões de download
+            st.download_button(
+                label="Exportar para CSV",
+                data=df_chars.to_csv(index=False),
+                file_name="analise_caracteres.csv",
+                mime="text/csv",
+            )
+            output = io.BytesIO()
+            df_chars.to_excel(output, index=False)
+            st.download_button(
+                label="Exportar para Excel",
+                data=output.getvalue(),
+                file_name="analise_caracteres.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+# --------------------------
+# Comparação de Textos
+# --------------------------
+st.markdown("---")
+st.subheader("Comparar Dois Textos")
+with st.container(border=True):
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("### Texto 1")
+    with col2:
+        st.write("### Texto 2")
+    
+    text_input_1, text_input_2 = st.columns(2)
+    with text_input_1:
+        text1 = st.text_area("Insira o primeiro texto", height=200, key="text1")
+    with text_input_2:
+        text2 = st.text_area("Insira o segundo texto", height=200, key="text2")
+
+    if st.button("Comparar Textos Char a Char"):
+        if not text1 or not text2:
+            st.warning("Por favor, insira ambos os textos para comparar.")
+        else:
+            st.write("### Análise Caractere por Caractere - Texto 1")
+            df_chars1 = analyze_chars(text1)
+            st.dataframe(df_chars1, use_container_width=True)
+
+            st.write("### Análise Caractere por Caractere - Texto 2")
+            df_chars2 = analyze_chars(text2)
+            st.dataframe(df_chars2, use_container_width=True)
+
+# --------------------------
+# Limpeza e Normalização
+# --------------------------
+st.markdown("---")
+st.subheader("Limpeza e Normalização do Texto")
+with st.container(border=True):
+    st.write("Selecione as opções de limpeza e normalização:")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        ajustar_espacos = st.checkbox("Ajustar espaçamentos", value=True)
+        ajustar_corrompidos = st.checkbox("Ajustar caracteres corrompidos", value=True)
+    with col2:
+        ajustar_estranhos = st.checkbox("Ajustar caracteres estranhos", value=True)
+        arrumar_nomes = st.checkbox("Arrumar para nomes", value=False)
+        
+    if st.button("Limpar e Normalizar Texto"):
+        cleaned_text = text_input
+        
+        # Ajustar caracteres estranhos
+        if ajustar_estranhos:
+            cleaned_text = cleaned_text.replace('\u00A0', ' ').replace('\u200B', '')
+            
+        # Ajustar caracteres corrompidos
+        if ajustar_corrompidos:
+            corrupted_map = {
+                'Ã': 'ã', 'á': 'à', 'À': 'Á', 'é': 'è', 'É': 'È', 'í': 'ì', 'Í': 'Ì',
+                'ó': 'ò', 'Ó': 'Ò', 'ú': 'ù', 'Ú': 'Ù', 'ç': 'Ç', 'ã': 'Ã',
+                'ü': 'Ü', 'ï': 'Ï', 'ñ': 'Ñ'
+            }
+            cleaned_text = cleaned_text.translate(str.maketrans(corrupted_map))
+        
+        # Ajustar espaçamentos
+        if ajustar_espacos:
+            cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+            
+        # Arrumar para nomes
+        if arrumar_nomes:
+            # Lista de palavras para manter em minúsculo
+            prepositions = ['de', 'da', 'do', 'dos', 'das', 'e', 'em']
+            cleaned_words = []
+            for word in cleaned_text.split():
+                if word.lower() in prepositions:
+                    cleaned_words.append(word.lower())
+                elif word.lower().startswith("d'") and len(word) > 2:
+                    cleaned_words.append("D'" + word[2].upper() + word[3:].lower())
+                else:
+                    cleaned_words.append(word.capitalize())
+            cleaned_text = " ".join(cleaned_words)
+        
+        st.write("### Texto Corrigido")
+        st.code(cleaned_text, language="text")

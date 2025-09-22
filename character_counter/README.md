@@ -1,36 +1,24 @@
-# **Contador de Texto Avançado**
+# **Analisador de Strings**
 
-Este projeto é uma ferramenta para análise de texto. Ele fornece contagens em tempo real de vários atributos de um texto digitado, ajudando em tarefas como redação, SEO, ou análise de conteúdo.
+Uma ferramenta multifuncional para análise de texto. Permite contagem em tempo real de caracteres, palavras e linhas, além de análises avançadas de frequência, inspeção de caracteres e limpeza de texto.
 
-## **Funcionalidades**
+### **Funcionalidades**
 
-* **Contagem em Tempo Real:**  
-  * Caracteres  
-  * Palavras  
-  * Espaços  
-  * Linhas  
-  * Sentenças  
-  * Parágrafos  
-* **Análises Avançadas (disponível ao clicar no botão "Iniciar"):**  
-  * Frequência de repetição de palavras (ordem decrescente)
-  * Frequência de repetição de letras (ordem decrescente)
+* **Contagem Básica:** Contagem de caracteres, palavras, espaços, linhas, sentenças e parágrafos.  
+* **Frequência de Ocorrências:** Análise de repetição de palavras e letras em formato de tabela, com opções de exportação para Excel ou CSV.  
+* **Análise Char a Char:** Apresenta cada caractere com seu código decimal, hexadecimal e octal.  
+* **Comparação de Textos:** Analisa os caracteres de dois textos lado a lado.  
+* **Limpeza e Normalização:** Corrige espaçamentos, caracteres estranhos e corrompidos. Inclui um modo de formatação para nomes.
 
-## **Como Usar**
+### **Como Executar**
 
-1. Digite ou cole seu texto na caixa de entrada.  
-2. As contagens básicas serão atualizadas instantaneamente.  
-3. Para a análise avançada, clique em "Iniciar Análise Avançada" na seção oculta.
+A ferramenta foi projetada para rodar em um ambiente Docker e pode ser integrada a um ecossistema com Nginx para proxy reverso.
 
-## **Estrutura do Projeto**
+1. Certifique-se de que o **Python** e o **Streamlit** estão instalados no seu ambiente.  
+2. Instale as dependências com o comando:  
+   pip install \-r requirements.txt
 
-* app.py: Contém a lógica principal da aplicação Streamlit.  
-* requirements.txt: Lista as dependências necessárias (apenas streamlit).
+3. Execute a aplicação localmente:  
+   streamlit run app.py
 
-## **Instalação e Execução**
-
-Para rodar esta ferramenta de forma independente (fora do contexto do seu projeto **Caixa de Ferramentas**), siga os passos abaixo:
-
-1. Clone este repositório.  
-2. Navegue até a pasta do projeto.  
-3. Instale as dependências: pip install \-r requirements.txt  
-4. Execute a aplicação: streamlit run app.py
+Para integração com o seu ambiente completo, adicione o serviço ao docker-compose.yml e configure o Nginx para rotear o tráfego para a aplicação.
