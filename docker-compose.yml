@@ -52,3 +52,12 @@ services:
       - ./execute_multiple_mutations_on_pipefy:/app
     environment:
       - PYTHONUNBUFFERED=1
+
+  character-app:
+    build: ./character_counter
+    ports:
+      - "8504:8501"
+    volumes:
+      - ./character_counter:/app
+    environment:
+      - PYTHONUNBUFFERED=1
