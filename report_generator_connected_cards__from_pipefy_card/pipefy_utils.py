@@ -1,0 +1,110 @@
+import requests
+from collections import defaultdict
+
+def execute_graphql_query(query, token):
+    """
+    Executa uma query GraphQL na API do Pipefy e lida com a resposta.
+
+    Esta função faz a chamada HTTP para a API do Pipefy usando um token de acesso
+    e uma query GraphQL. É a função central para comunicação com o serviço.
+
+    Args:
+        query (str): A string da query GraphQL a ser executada.
+        token (str): O token de acesso Bearer para autenticação.
+
+    Returns:
+        dict: O resultado da requisição em formato JSON, se bem-sucedida.
+    
+    Raises:
+        requests.exceptions.HTTPError: Se a resposta da API for um erro HTTP.
+        Exception: Para outros erros inesperados na execução.
+    """
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    response = requests.post("https://api.pipefy.com/graphql", json={"query": query}, headers=headers)
+    response.raise_for_status()
+    return response.json()
+
+def extract_nested_lists(obj):
+    """
+    Extrai listas aninhadas, como `cards`, da resposta bruta da API de forma recursiva.
+
+    Esta função percorre a resposta JSON para encontrar e consolidar todas as listas
+    de `cards` aninhadas, tornando-as mais fáceis de processar na aplicação.
+
+    Args:
+        obj (dict or list): O objeto (resposta JSON da API) a ser inspecionado.
+
+    Returns:
+        list: Uma lista consolidada de todos os dicionários de cards encontrados.
+    """
+    collected_cards = []
+    if isinstance(obj, dict):
+        for value in obj.values():
+            collected_cards.extend(extract_nested_lists(value))
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, dict) and 'cards' in item and isinstance(item['cards'], list):
+                collected_cards.extend(item['cards'])
+            collected_cards.extend(extract_nested_lists(item))
+    return collected_cards
+
+def flatten_record_with_lists(record, parent_key='', sep='_', list_field_limit=6):
+    """
+    Achata um registro aninhado em um dicionário de nível único.
+
+    Esta função converte um registro aninhado da API em um dicionário simples
+    (uma "linha" de tabela). Ela lida com listas de dicionários, seja achatando-as
+    em colunas separadas ou criando subtabelas, dependendo do `list_field_limit`.
+
+    Args:
+        record (dict): O registro a ser achatado.
+        parent_key (str, opcional): A chave pai para prefixar as novas chaves.
+        sep (str, opcional): Separador entre as chaves aninhadas.
+        list_field_limit (int, opcional): Limite de colunas para achatamento de listas.
+                                          Acima deste limite, uma subtabela é criada.
+
+    Returns:
+        tuple: Uma tupla contendo o dicionário achatado (tabela principal) e um
+               dicionário de subtabelas.
+    """
+    items = {}
+    sub_tables = defaultdict(list)
+
+    for k, v in record.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            sub_items, sub_sub_tables = flatten_record_with_lists(v, new_key, sep, list_field_limit)
+            items.update(sub_items)
+            for subk, subv in sub_sub_tables.items():
+                sub_tables[subk].extend(subv)
+        elif isinstance(v, list) and all(isinstance(i, dict) for i in v) and v:
+            total_fields = len(v[0].keys())
+            max_items = max(len(v), 1)
+            estimated_columns = total_fields * max_items
+            if estimated_columns <= list_field_limit:
+                for idx, entry in enumerate(v):
+                    for subk, subv in entry.items():
+                        col_name = f"{new_key}_{idx}_{subk}"
+                        items[col_name] = subv
+            else:
+                sub_table_name = new_key
+                entry_ids = []
+                previews = []
+                sub_rows = []
+                for idx, entry in enumerate(v):
+                    row = {"__parent_id__": record.get("id", parent_key), "__local_id__": entry.get("id", f"{new_key}_{idx}")}
+                    for subk, subv in entry.items():
+                        row[subk] = subv
+                    sub_rows.append(row)
+                    preview = entry.get("name") or entry.get("title") or str(entry)
+                    previews.append(preview)
+                    entry_ids.append(row["__local_id__"])
+                items[f"{new_key}_refs"] = entry_ids
+                items[f"{new_key}_preview[]"] = previews
+                sub_tables[sub_table_name].extend(sub_rows)
+        else:
+            items[new_key] = v
+    return dict(items), dict(sub_tables)
