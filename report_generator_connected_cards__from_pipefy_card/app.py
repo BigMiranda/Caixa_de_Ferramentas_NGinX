@@ -4,7 +4,7 @@ import json
 import re
 from io import BytesIO
 from pathlib import Path
-from pipefy_utils import execute_graphql_query, extract_nested_lists, flatten_record_with_lists, generate_phase_report, get_pipe_phases
+from pipefy_utils import execute_graphql_query, extract_nested_lists, flatten_record_with_lists, generate_phase_report, get_pipe_phases, get_connected_cards_with_mandatory_fields
 
 st.set_page_config(page_title="Pipefy Query Runner", layout="wide")
 st.title("📊 Executor de Query GraphQL (Pipefy) com Suporte a Subtabelas")
@@ -17,6 +17,13 @@ if QUERIES_FILE.exists():
         saved_queries = json.load(f)
 else:
     saved_queries = {}
+
+# Entradas principais
+token = st.text_input("🔐 Token de Acesso (Bearer)", type="password", key="token_input")
+if token:
+    st.session_state['token'] = token
+
+st.markdown("---")
 
 # Seção de Relatório
 with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
@@ -69,11 +76,49 @@ with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
 
 st.markdown("---")
 
-# Entradas principais
-token = st.text_input("🔐 Token de Acesso (Bearer)", type="password", key="token_input")
-if token:
-    st.session_state['token'] = token
+# Nova seção de Relatório de Campos Obrigatórios
+with st.expander("📝 Gerar Relatório de Cards com Campos Obrigatórios"):
+    st.markdown("Use esta função para encontrar todos os cards conectados que estão em fases com campos obrigatórios.")
+    mandatory_report_card_ids = st.text_area("IDs dos Cards (um por linha)", key="mandatory_report_card_ids")
     
+    if st.button("▶️ Gerar Relatório de Obrigatórios"):
+        if not mandatory_report_card_ids:
+            st.warning("⚠️ Por favor, insira pelo menos um Card ID.")
+        elif not st.session_state.get('token'):
+            st.warning("⚠️ O Token de Acesso é obrigatório.")
+        else:
+            card_ids = mandatory_report_card_ids.strip().splitlines()
+            if not card_ids:
+                st.warning("⚠️ Por favor, insira IDs válidos.")
+            else:
+                try:
+                    with st.spinner("🔄 Gerando relatório..."):
+                        report_data = get_connected_cards_with_mandatory_fields(card_ids, st.session_state.get('token'))
+                    
+                    if report_data:
+                        df_report = pd.DataFrame(report_data)
+                        st.success("✅ Relatório gerado com sucesso!")
+                        st.dataframe(df_report)
+                        
+                        # Exportar Excel
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                            df_report.to_excel(writer, index=False, sheet_name="Relatório Obrigatórios")
+                            
+                        st.download_button(
+                            label="📤 Baixar Relatório em Excel",
+                            data=output.getvalue(),
+                            file_name="relatorio_obrigatorios.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.info("ℹ️ Nenhum dado encontrado para os IDs fornecidos.")
+                except Exception as e:
+                    st.error("❌ Erro ao gerar o relatório.")
+                    st.exception(e)
+
+st.markdown("---")
+
 query_names = list(saved_queries.keys())
 selected_query = st.selectbox("📂 Escolher uma query salva", [""] + query_names)
 query_text = saved_queries.get(selected_query, "")

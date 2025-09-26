@@ -240,3 +240,104 @@ def generate_phase_report(card_ids, token, filter_type):
             processed_phases.add((pipe_id, phase_id))
             
     return final_report
+
+def check_phase_for_mandatory_fields(phase_id, token):
+    """
+    Verifica se uma fase possui campos obrigatórios.
+
+    Args:
+        phase_id (str): O ID da fase a ser verificada.
+        token (str): O token de acesso Bearer para autenticação.
+
+    Returns:
+        bool: True se a fase tem pelo menos um campo obrigatório, False caso contrário.
+    """
+    query = f"""
+    query {{
+      phase(id: "{phase_id}") {{
+        fields {{
+          required
+        }}
+      }}
+    }}
+    """
+    try:
+        result = execute_graphql_query(query, token)
+        fields = result.get("data", {}).get("phase", {}).get("fields", [])
+        return any(field.get("required") for field in fields)
+    except Exception as e:
+        print(f"Erro ao verificar campos obrigatórios para a fase {phase_id}: {e}")
+        return False
+
+def get_connected_cards_with_mandatory_fields(card_ids, token):
+    """
+    Obtém uma lista de cards conectados cujas fases possuem campos obrigatórios.
+
+    Args:
+        card_ids (list): Uma lista de IDs de card para buscar.
+        token (str): O token de acesso Bearer para autenticação.
+
+    Returns:
+        list: Uma lista de dicionários, onde cada dicionário representa um card conectado que passou no filtro.
+    """
+    # 1. Obter todos os cards conectados com seus dados de fase
+    all_connected_cards = []
+    card_query_template = """
+    query {{
+      card(id: "{}") {{
+        parent_relations {{
+          cards {{
+            id
+            title
+            pipe {{
+              id
+              name
+            }}
+            current_phase {{
+              id
+              name
+            }}
+          }}
+        }}
+      }}
+    }}
+    """
+    for card_id in card_ids:
+        try:
+            query = card_query_template.format(card_id.strip())
+            result = execute_graphql_query(query, token)
+            connected_cards = extract_nested_lists(result.get("data", {}))
+            all_connected_cards.extend(connected_cards)
+        except Exception as e:
+            print(f"Erro ao processar o card ID {card_id}: {e}")
+            continue
+
+    # 2. Identificar fases únicas e verificar se possuem campos obrigatórios
+    unique_phases = {}
+    for card in all_connected_cards:
+        phase_id = card.get("current_phase", {}).get("id")
+        if phase_id and phase_id not in unique_phases:
+            unique_phases[phase_id] = {
+                "name": card.get("current_phase", {}).get("name"),
+                "has_mandatory_fields": False
+            }
+
+    for phase_id in unique_phases.keys():
+        has_mandatory = check_phase_for_mandatory_fields(phase_id, token)
+        unique_phases[phase_id]["has_mandatory_fields"] = has_mandatory
+
+    # 3. Filtrar os cards conectados originais com base nas fases que têm campos obrigatórios
+    filtered_cards = []
+    for card in all_connected_cards:
+        phase_id = card.get("current_phase", {}).get("id")
+        if phase_id in unique_phases and unique_phases[phase_id]["has_mandatory_fields"]:
+            filtered_cards.append({
+                "Card ID": card.get("id"),
+                "Card Título": card.get("title"),
+                "Pipe ID": card.get("pipe", {}).get("id"),
+                "Pipe Nome": card.get("pipe", {}).get("name"),
+                "Fase ID": phase_id,
+                "Fase Nome": card.get("current_phase", {}).get("name")
+            })
+
+    return filtered_cards
