@@ -54,6 +54,10 @@ with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
                     
                     if report_data:
                         df_report = pd.DataFrame(report_data)
+                        
+                        # Ordenação: Acima Pipe ID crescente, abaixo Fase ID crescente
+                        df_report = df_report.sort_values(by=['Pipe ID','Fase ID'], ascending=[True, True])
+
                         st.success("✅ Relatório gerado com sucesso!")
                         st.dataframe(df_report)
                         
