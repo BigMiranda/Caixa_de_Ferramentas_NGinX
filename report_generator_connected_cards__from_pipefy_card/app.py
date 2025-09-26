@@ -1,10 +1,10 @@
 import streamlit as st
-import requests
 import pandas as pd
 import json
 import re
 from io import BytesIO
 from pathlib import Path
+from pipefy_utils import execute_graphql_query, extract_nested_lists, flatten_record_with_lists, generate_phase_report, get_pipe_phases, get_connected_cards_with_mandatory_fields
 
 st.set_page_config(page_title="Pipefy Query Runner", layout="wide")
 st.title("📊 Executor de Query GraphQL (Pipefy) com Suporte a Subtabelas")
@@ -19,10 +19,118 @@ else:
     saved_queries = {}
 
 # Entradas principais
-token = st.text_input("🔐 Token de Acesso (Bearer)", type="password")
+token = st.text_input("🔐 Token de Acesso (Bearer)", type="password", key="token_input")
+if token:
+    st.session_state['token'] = token
+
+st.markdown("---")
+
+# Seção de Relatório
+with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
+    st.markdown("Use esta função para gerar um relatório consolidado das fases e pipes dos cards conectados, aplicando filtros específicos.")
+    report_card_ids_text = st.text_area("IDs dos Cards (um por linha)", key="report_card_ids")
+    
+    st.markdown("---")
+    
+    report_filter_type = st.radio(
+        "Selecione o tipo de filtro:",
+        ("Nenhum Filtro", "Mudança de Embarque", "Desistências"),
+        key="report_filter_type"
+    )
+    
+    if st.button("▶️ Gerar Relatório de Fases"):
+        if not report_card_ids_text:
+            st.warning("⚠️ Por favor, insira pelo menos um Card ID.")
+        elif not st.session_state.get('token'):
+            st.warning("⚠️ O Token de Acesso é obrigatório.")
+        else:
+            card_ids = report_card_ids_text.strip().splitlines()
+            if not card_ids:
+                st.warning("⚠️ Por favor, insira IDs válidos.")
+            else:
+                try:
+                    with st.spinner("🔄 Gerando relatório..."):
+                        report_data = generate_phase_report(card_ids, st.session_state.get('token'), report_filter_type)
+                    
+                    if report_data:
+                        df_report = pd.DataFrame(report_data)
+                        st.success("✅ Relatório gerado com sucesso!")
+                        st.dataframe(df_report)
+                        
+                        # Exportar Excel
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                            df_report.to_excel(writer, index=False, sheet_name="Relatório de Fases")
+                            
+                        st.download_button(
+                            label="📤 Baixar Relatório em Excel",
+                            data=output.getvalue(),
+                            file_name="relatorio_fases.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                        
+                        # Exportar CSV
+                        csv_output = df_report.to_csv(index=False)
+                        st.download_button(
+                            label="📥 Baixar Relatório em CSV",
+                            data=csv_output,
+                            file_name="relatorio_fases.csv",
+                            mime="text/csv"
+                        )
+                        
+                    else:
+                        st.info("ℹ️ Nenhum dado encontrado para os IDs e filtros fornecidos.")
+                except Exception as e:
+                    st.error("❌ Erro ao gerar o relatório.")
+                    st.exception(e)
+
+st.markdown("---")
+
+# Nova seção de Relatório de Campos Obrigatórios
+with st.expander("📝 Gerar Relatório de Cards com Campos Obrigatórios"):
+    st.markdown("Use esta função para encontrar todos os cards conectados que estão em fases com campos obrigatórios.")
+    mandatory_report_card_ids = st.text_area("IDs dos Cards (um por linha)", key="mandatory_report_card_ids")
+    
+    if st.button("▶️ Gerar Relatório de Obrigatórios"):
+        if not mandatory_report_card_ids:
+            st.warning("⚠️ Por favor, insira pelo menos um Card ID.")
+        elif not st.session_state.get('token'):
+            st.warning("⚠️ O Token de Acesso é obrigatório.")
+        else:
+            card_ids = mandatory_report_card_ids.strip().splitlines()
+            if not card_ids:
+                st.warning("⚠️ Por favor, insira IDs válidos.")
+            else:
+                try:
+                    with st.spinner("🔄 Gerando relatório..."):
+                        report_data = get_connected_cards_with_mandatory_fields(card_ids, st.session_state.get('token'))
+                    
+                    if report_data:
+                        df_report = pd.DataFrame(report_data)
+                        st.success("✅ Relatório gerado com sucesso!")
+                        st.dataframe(df_report)
+                        
+                        # Exportar Excel
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                            df_report.to_excel(writer, index=False, sheet_name="Relatório Obrigatórios")
+                            
+                        st.download_button(
+                            label="📤 Baixar Relatório em Excel",
+                            data=output.getvalue(),
+                            file_name="relatorio_obrigatorios.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.info("ℹ️ Nenhum dado encontrado para os IDs fornecidos.")
+                except Exception as e:
+                    st.error("❌ Erro ao gerar o relatório.")
+                    st.exception(e)
+
+st.markdown("---")
+
 query_names = list(saved_queries.keys())
 selected_query = st.selectbox("📂 Escolher uma query salva", [""] + query_names)
-
 query_text = saved_queries.get(selected_query, "")
 
 # Extração de parâmetros variáveis
@@ -43,114 +151,32 @@ for k, v in param_values.items():
     final_query = final_query.replace(f"$$" + k + "$$", v).replace(f"$" + k + "$", v)
 
 with st.expander("⚙️ Configurações Avançadas"):
-    st.text_area("✍️ Editar Query GraphQL", value=final_query, height=300, key="query_edit")
-
-    # Salvar nova query
+    edited_query = st.text_area("✍️ Editar Query GraphQL", value=final_query, height=300)
     with st.expander("💾 Salvar esta query"):
         new_name = st.text_input("Nome para salvar a query")
         if st.button("Salvar query"):
             if new_name:
-                saved_queries[new_name] = st.session_state["query_edit"]
+                saved_queries[new_name] = edited_query
                 with open(QUERIES_FILE, "w", encoding="utf-8") as f:
                     json.dump(saved_queries, f, indent=2, ensure_ascii=False)
                 st.success(f"Query '{new_name}' salva!")
             else:
                 st.warning("⚠️ Informe um nome válido.")
-    
     col_limit = st.number_input("🔧 Limite máximo de colunas antes de criar subtabela", min_value=1, max_value=50, value=6, step=1)
-
-# Função flatten com subtabelas
-def flatten_record_with_lists(record, parent_key='', sep='_', list_field_limit=6):
-    items = {}
-    sub_tables = {}
-
-    for k, v in record.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else k
-
-        if isinstance(v, dict):
-            sub_items, sub_sub_tables = flatten_record_with_lists(v, new_key, sep, list_field_limit)
-            items.update(sub_items)
-            for subk, subv in sub_sub_tables.items():
-                sub_tables.setdefault(subk, []).extend(subv)
-
-        elif isinstance(v, list) and all(isinstance(i, dict) for i in v) and v:
-            total_fields = len(v[0].keys())
-            max_items = max(len(v), 1)
-            estimated_columns = total_fields * max_items
-
-            if estimated_columns <= list_field_limit:
-                for idx, entry in enumerate(v):
-                    for subk, subv in entry.items():
-                        col_name = f"{new_key}_{idx}_{subk}"
-                        items[col_name] = subv
-            else:
-                sub_table_name = new_key
-                entry_ids = []
-                previews = []
-                sub_rows = []
-                for idx, entry in enumerate(v):
-                    row = {}
-                    entry_id = entry.get("id", f"{new_key}_{idx}")
-                    entry_ids.append(entry_id)
-                    row["__parent_id__"] = record.get("id", parent_key)
-                    row["__local_id__"] = entry_id
-                    for subk, subv in entry.items():
-                        row[subk] = subv
-                    sub_rows.append(row)
-                    preview = entry.get("name") or entry.get("title") or str(entry)
-                    previews.append(preview)
-
-                items[f"{new_key}_refs"] = entry_ids
-                items[f"{new_key}_preview[]"] = previews
-                sub_tables[sub_table_name] = sub_rows
-
-        else:
-            items[new_key] = v
-
-    return items, sub_tables
-
-# Função para extrair listas de cards
-def extract_nested_lists(obj, key_chain=None):
-    key_chain = key_chain or []
-    collected = []
-
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if isinstance(v, list):
-                for idx, item in enumerate(v):
-                    if isinstance(item, dict) and "cards" in item and isinstance(item["cards"], list):
-                        collected.extend(item["cards"])
-            else:
-                collected.extend(extract_nested_lists(v, key_chain + [k]))
-
-    elif isinstance(obj, list):
-        for item in obj:
-            collected.extend(extract_nested_lists(item, key_chain))
-
-    return collected
 
 # Executar a query
 if st.button("▶️ Executar Query"):
-    if not token or not final_query.strip():
+    if not st.session_state.get('token') or not edited_query.strip():
         st.warning("⚠️ Token e query são obrigatórios.")
     else:
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-
         try:
             with st.spinner("🔄 Executando query..."):
-                response = requests.post("https://api.pipefy.com/graphql", json={"query": final_query}, headers=headers)
-                response.raise_for_status()
-                result = response.json()
-
+                result = execute_graphql_query(edited_query, st.session_state.get('token'))
             st.success("✅ Query executada com sucesso.")
 
             with st.expander("🔍 Logs de Execução"):
                 with st.expander("📥 Resposta bruta"):
                     st.json(result)
-
                 st.write("🔎 Buscando listas aninhadas (ex: parent_relations[*].cards[*])...")
                 nested_list = extract_nested_lists(result.get("data", {}))
 
@@ -161,11 +187,10 @@ if st.button("▶️ Executar Query"):
                 else:
                     st.warning("❌ Nenhuma sublista encontrada com chave 'cards'.")
                     st.stop()
-
+            
             # Flatten com subtabelas
             flattened_rows = []
             all_sub_tables = {}
-
             for rec in nested_list:
                 flat, sub = flatten_record_with_lists(rec, list_field_limit=col_limit)
                 flattened_rows.append(flat)
@@ -175,7 +200,6 @@ if st.button("▶️ Executar Query"):
             df_main = pd.DataFrame(flattened_rows)
             st.subheader("📊 Tabela Principal")
             st.dataframe(df_main)
-
             for sub_name, sub_data in all_sub_tables.items():
                 df_sub = pd.DataFrame(sub_data)
                 st.markdown(f"#### 📄 Subtabela: `{sub_name}`")
@@ -188,7 +212,6 @@ if st.button("▶️ Executar Query"):
                 for tab_name, sub_data in all_sub_tables.items():
                     df_sub = pd.DataFrame(sub_data)
                     df_sub.to_excel(writer, index=False, sheet_name=tab_name[:31])
-
             st.download_button(
                 label="📤 Baixar resultado em Excel",
                 data=output.getvalue(),

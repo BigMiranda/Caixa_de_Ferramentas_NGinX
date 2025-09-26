@@ -1,100 +1,40 @@
-# 🔗 Executor de Queries de busca de cards conectados via GraphQL do Pipefy com Subtabelas
+# **📊 Pipefy Query Runner**
 
-Este projeto permite a execução de **queries GraphQL genéricas** contra a API do Pipefy, com foco em análise de dados estruturados. A aplicação identifica listas aninhadas automaticamente (como `parent_relations.cards`) e trata campos complexos de forma inteligente, exibindo os dados em tabelas interativas e exportáveis em Excel.
+Uma aplicação web em Streamlit para executar queries GraphQL na API do Pipefy, visualizar os dados em tabelas e exportá-los para Excel.
 
-Você poderá:
+### **✨ Funcionalidades**
 
-- Substituir campos variáveis da query de forma prática
-- Visualizar resultados em tabela principal e subtabelas
-- Ver prévias de campos complexos e listas de objetos
-- Exportar todos os dados para Excel com múltiplas abas
-- Salvar e reutilizar queries nomeadas
+* **Execução de Queries GraphQL**: Execute queries personalizadas na API do Pipefy com suporte a variáveis.  
+* **Leitura de Dados Aninhados**: Identifica e "achata" dados aninhados (como cards conectados) em um formato de tabela fácil de ler.  
+* **Relatório de Fases**: Gere um relatório com as fases e pipes dos cards conectados, com a opção de filtrar por tipo de pipe (ex: "Mudança de Embarque" ou "Desistências").  
+* **Relatório de Campos Obrigatórios**: Encontre cards conectados que estão em fases com campos obrigatórios.  
+* **Exportação para Excel**: Exporte os resultados para um arquivo Excel com múltiplas abas para a tabela principal e as subtabelas.  
+* **Salvamento de Queries**: Salve suas queries mais usadas em um arquivo local para acesso rápido.
 
----
+### **⚙️ Como Usar**
 
-## 🚀 Como Rodar com Docker Compose
+1. **Clone o repositório:**  
+   git clone \[https://github.com/your-repo/pipefy-query-runner.git\](https://github.com/your-repo/pipefy-query-runner.git)  
+   cd pipefy-query-runner
 
-### 1️⃣ Clonar o Repositório
-```bash
-git clone https://github.com/seu-usuario/pipefy-query-runner.git
-cd pipefy-query-runner
-```
+2. **Instale as dependências:**  
+   pip install \-r requirements.txt
 
-### 2️⃣ Rodar com Docker Compose
-```bash
-docker compose up -d
-```
+3. **Execute a aplicação:**  
+   streamlit run app.py
 
-### 3️⃣ Acessar no Navegador
-```
-http://localhost:8501
-```
+4. Abra a aplicação no seu navegador, insira seu token de acesso da API do Pipefy e comece a executar queries ou gerar relatórios.
 
----
+### **🔑 Requisitos**
 
-## 🛠 Como Rodar Localmente (sem Docker)
+* Python 3.9+  
+* Um token de acesso válido da API do Pipefy.
 
-### 1️⃣ Instalar Dependências
-```bash
-pip install -r requirements.txt
-```
+### **📂 Estrutura do Projeto**
 
-### 2️⃣ Rodar o Streamlit
-```bash
-streamlit run app.py
-```
-
----
-
-## 🧾 Requisitos
-
-Para utilizar o projeto, você precisará de um **Access Token (Bearer Token)** do Pipefy.
-
-📌 Gere seu token aqui:  
-👉 [https://app.pipefy.com/tokens](https://app.pipefy.com/tokens)
-
----
-
-## 🧠 Funcionalidades
-
-✅ Inserção e edição de queries GraphQL genéricas  
-✅ Suporte a campos variáveis com substituição dinâmica (`$variável$`, `$$multi linha$$`)  
-✅ Identificação automática de listas aninhadas, como `parent_relations[*].cards[*]`  
-✅ Flattenização de dados com nomes de coluna no padrão `obj_subobj_campo`  
-✅ Criação de subtabelas quando o número de colunas excede o limite definido  
-✅ Prévia dos objetos complexos diretamente na tabela principal  
-✅ Visualização de logs e resposta bruta da API  
-✅ Exportação para Excel (.xlsx) com múltiplas abas  
-✅ Salvamento e reuso de queries nomeadas
-
----
-
-## 📂 Estrutura do Projeto
-
-```
-pipefy-query-runner/
-├── app.py                 # Código principal da aplicação (Streamlit)
-├── saved_queries.json     # Armazena queries salvas localmente
-├── Dockerfile             # Build da imagem Docker
-├── docker-compose.yml     # Orquestração via Docker Compose
-├── requirements.txt       # Dependências Python
-└── README.md              # Documentação do projeto
-```
-
----
-
-## 📆 Tecnologias Utilizadas
-
-- **Streamlit** – Interface web interativa  
-- **GraphQL** – Integração com a API do Pipefy  
-- **Pandas** – Manipulação de dados  
-- **XlsxWriter** – Exportação para Excel  
-- **Docker & Docker Compose** – Execução padronizada e portátil
-
----
-
-## 📖 Licença
-
-Este projeto é de código aberto.  
-Sinta-se à vontade para usar, modificar e contribuir!  
-Se precisar de ajuda, abra uma issue. 🚀
+.  
+├── app.py                   \# Código principal do Streamlit  
+├── pipefy\_utils.py          \# Funções utilitárias para a API e relatórios  
+├── saved\_queries.json       \# Queries salvas  
+├── requirements.txt         \# Dependências do projeto  
+└── README.md                \# Documentação do projeto  
