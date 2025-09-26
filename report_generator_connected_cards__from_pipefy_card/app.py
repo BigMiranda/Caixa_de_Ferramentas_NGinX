@@ -4,7 +4,7 @@ import json
 import re
 from io import BytesIO
 from pathlib import Path
-from pipefy_utils import execute_graphql_query, extract_nested_lists, flatten_record_with_lists, generate_phase_report, get_pipe_phases, get_connected_cards_with_mandatory_fields
+from pipefy_utils import execute_graphql_query, extract_nested_lists, flatten_record_with_lists, generate_phase_report, get_pipe_phases, get_connected_cards_with_mandatory_fields, generate_final_phase_report
 
 st.set_page_config(page_title="Pipefy Query Runner", layout="wide")
 st.title("📊 Executor de Query GraphQL (Pipefy) com Suporte a Subtabelas")
@@ -27,17 +27,17 @@ st.markdown("---")
 
 # Seção de Relatório
 with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
-    st.markdown("Use esta função para gerar um relatório consolidado das fases e pipes dos cards conectados, aplicando filtros específicos.")
+    st.markdown("Use esta função para gerar um relatório consolidado das fases únicas dos cards conectados.")
     report_card_ids_text = st.text_area("IDs dos Cards (um por linha)", key="report_card_ids")
     
     st.markdown("---")
     
-    report_filter_type = st.radio(
-        "Selecione o tipo de filtro:",
+    filter_type = st.radio(
+        "Selecione um filtro:",
         ("Nenhum Filtro", "Mudança de Embarque", "Desistências"),
-        key="report_filter_type"
+        key="phase_report_filter_type"
     )
-    
+
     if st.button("▶️ Gerar Relatório de Fases"):
         if not report_card_ids_text:
             st.warning("⚠️ Por favor, insira pelo menos um Card ID.")
@@ -50,7 +50,7 @@ with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
             else:
                 try:
                     with st.spinner("🔄 Gerando relatório..."):
-                        report_data = generate_phase_report(card_ids, st.session_state.get('token'), report_filter_type)
+                        report_data = generate_phase_report(card_ids, st.session_state.get('token'), filter_type)
                     
                     if report_data:
                         df_report = pd.DataFrame(report_data)
@@ -121,6 +121,67 @@ with st.expander("📝 Gerar Relatório de Cards com Campos Obrigatórios"):
                             file_name="relatorio_obrigatorios.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
+                    else:
+                        st.info("ℹ️ Nenhum dado encontrado para os IDs fornecidos.")
+                except Exception as e:
+                    st.error("❌ Erro ao gerar o relatório.")
+                    st.exception(e)
+
+st.markdown("---")
+
+# Nova seção de Relatório de Fases Finais
+with st.expander("📝 Gerar Relatório com IDs de Fases Finais"):
+    st.markdown("Use esta função para encontrar os IDs de fases finais ('Mudança de Embarque' ou 'Desistências') para cada card conectado.")
+    special_phase_card_ids = st.text_area("IDs dos Cards (um por linha)", key="special_phase_card_ids")
+    
+    st.markdown("---")
+    
+    special_phase_filter_type = st.radio(
+        "Selecione o tipo de fase a ser buscada:",
+        ("Mudança de Embarque", "Desistências"),
+        key="special_phase_filter_type"
+    )
+    
+    if st.button("▶️ Gerar Relatório de Fases Finais"):
+        if not special_phase_card_ids:
+            st.warning("⚠️ Por favor, insira pelo menos um Card ID.")
+        elif not st.session_state.get('token'):
+            st.warning("⚠️ O Token de Acesso é obrigatório.")
+        else:
+            card_ids = special_phase_card_ids.strip().splitlines()
+            if not card_ids:
+                st.warning("⚠️ Por favor, insira IDs válidos.")
+            else:
+                try:
+                    with st.spinner("🔄 Gerando IDs de fases..."):
+                        report_data = generate_final_phase_report(card_ids, st.session_state.get('token'), special_phase_filter_type)
+                    
+                    if report_data:
+                        df_report = pd.DataFrame(report_data)
+                        st.success("✅ Relatório de IDs gerado com sucesso!")
+                        st.dataframe(df_report)
+                        
+                        # Exportar Excel
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                            df_report.to_excel(writer, index=False, sheet_name="IDs de Fases")
+                            
+                        st.download_button(
+                            label="📤 Baixar Relatório em Excel",
+                            data=output.getvalue(),
+                            file_name="relatorio_fases_especificas.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                        
+                        # Exportar CSV
+                        csv_output = df_report.to_csv(index=False)
+                        st.download_button(
+                            label="📥 Baixar Relatório em CSV",
+                            data=csv_output,
+                            file_name="relatorio_fases_especificas.csv",
+                            mime="text/csv"
+                        )
+                        
                     else:
                         st.info("ℹ️ Nenhum dado encontrado para os IDs fornecidos.")
                 except Exception as e:

@@ -1,5 +1,7 @@
 import requests
 from collections import defaultdict
+import json
+import re
 
 def execute_graphql_query(query, token):
     """
@@ -64,7 +66,7 @@ def flatten_record_with_lists(record, parent_key='', sep='_', list_field_limit=6
         parent_key (str, opcional): A chave pai para prefixar as novas chaves.
         sep (str, opcional): Separador entre as chaves aninhadas.
         list_field_limit (int, opcional): Limite de colunas para achatamento de listas.
-                                          Acima deste limite, uma subtabela é criada.
+                                        Acima deste limite, uma subtabela é criada.
 
     Returns:
         tuple: Uma tupla contendo o dicionário achatado (tabela principal) e um
@@ -341,3 +343,98 @@ def get_connected_cards_with_mandatory_fields(card_ids, token):
             })
 
     return filtered_cards
+
+def generate_final_phase_report(card_ids, token, filter_type):
+    """
+    Gera um relatório de cards conectados, incluindo a fase de fim de processo.
+
+    Para cada card conectado, este método encontra a fase de fim de processo
+    (Mudança de Embarque ou Desistências) no pipe do card e a adiciona ao relatório.
+
+    Args:
+        card_ids (list): Uma lista de IDs de card para buscar.
+        token (str): O token de acesso Bearer para autenticação.
+        filter_type (str): O tipo de filtro a ser aplicado ("Mudança de Embarque" ou "Desistências").
+
+    Returns:
+        list: Uma lista de dicionários, onde cada dicionário representa uma linha do relatório.
+    """
+    
+    # Dicionário para cache das fases por pipe para evitar múltiplas chamadas à API
+    pipe_phases_cache = {}
+    
+    # 1. Obter cards conectados para cada ID fornecido
+    all_connected_cards = []
+    card_query_template = """
+    query {{
+      card(id: "{}") {{
+        title
+        parent_relations {{
+          cards {{
+            id
+            title
+            pipe {{
+              id
+              name
+            }}
+            current_phase {{
+              id
+              name
+            }}
+          }}
+        }}
+      }}
+    }}
+    """
+    for card_id in card_ids:
+        try:
+            query = card_query_template.format(card_id.strip())
+            result = execute_graphql_query(query, token)
+            connected_cards = extract_nested_lists(result.get("data", {}))
+            all_connected_cards.extend(connected_cards)
+        except Exception as e:
+            print(f"Erro ao processar o card ID {card_id}: {e}")
+            continue
+
+    # 2. Construir o relatório final card por card
+    final_report = []
+    
+    for card in all_connected_cards:
+        pipe_id = card.get("pipe", {}).get("id")
+        
+        end_phase_id = "N/A"
+        end_phase_name = "N/A"
+        
+        if pipe_id:
+            # Busca as fases do pipe do cache, ou da API se não estiver no cache
+            if pipe_id not in pipe_phases_cache:
+                pipe_phases_cache[pipe_id] = get_pipe_phases(pipe_id, token)["phases"]
+
+            phases_of_pipe = pipe_phases_cache[pipe_id]
+            
+            # Encontra a fase de "fim de processo"
+            for phase in phases_of_pipe:
+                phase_name = phase.get("name", "")
+                
+                # Usando expressões regulares para uma busca mais robusta e case-insensitive
+                if filter_type == "Mudança de Embarque" and re.search(r'mudanca.*embarque', phase_name, re.IGNORECASE):
+                    end_phase_id = phase.get("id", "N/A")
+                    end_phase_name = phase_name
+                    break
+                elif filter_type == "Desistências" and re.search(r'desist', phase_name, re.IGNORECASE):
+                    end_phase_id = phase.get("id", "N/A")
+                    end_phase_name = phase_name
+                    break
+        
+        final_report.append({
+            "Card ID": card.get("id"),
+            "Card Título": card.get("title"),
+            "Pipe ID": pipe_id,
+            "Pipe Nome": card.get("pipe", {}).get("name"),
+            "Fase Atual ID": card.get("current_phase", {}).get("id"),
+            "Fase Atual Nome": card.get("current_phase", {}).get("name"),
+            "ID da Fase de Fim de Processo": end_phase_id,
+            "Nome da Fase de Fim de Processo": end_phase_name
+        })
+            
+    return final_report
