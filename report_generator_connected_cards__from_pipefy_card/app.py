@@ -4,7 +4,7 @@ import json
 import re
 from io import BytesIO
 from pathlib import Path
-from pipefy_utils import execute_graphql_query, extract_nested_lists, flatten_record_with_lists
+from pipefy_utils import execute_graphql_query, extract_nested_lists, flatten_record_with_lists, generate_phase_report, get_pipe_phases
 
 st.set_page_config(page_title="Pipefy Query Runner", layout="wide")
 st.title("📊 Executor de Query GraphQL (Pipefy) com Suporte a Subtabelas")
@@ -18,8 +18,62 @@ if QUERIES_FILE.exists():
 else:
     saved_queries = {}
 
+# Seção de Relatório
+with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
+    st.markdown("Use esta função para gerar um relatório consolidado das fases e pipes dos cards conectados, aplicando filtros específicos.")
+    report_card_ids_text = st.text_area("IDs dos Cards (um por linha)", key="report_card_ids")
+    
+    st.markdown("---")
+    
+    report_filter_type = st.radio(
+        "Selecione o tipo de filtro:",
+        ("Nenhum Filtro", "Mudança de Embarque", "Desistências"),
+        key="report_filter_type"
+    )
+    
+    if st.button("▶️ Gerar Relatório de Fases"):
+        if not report_card_ids_text:
+            st.warning("⚠️ Por favor, insira pelo menos um Card ID.")
+        elif not st.session_state.get('token'):
+            st.warning("⚠️ O Token de Acesso é obrigatório.")
+        else:
+            card_ids = report_card_ids_text.strip().splitlines()
+            if not card_ids:
+                st.warning("⚠️ Por favor, insira IDs válidos.")
+            else:
+                try:
+                    with st.spinner("🔄 Gerando relatório..."):
+                        report_data = generate_phase_report(card_ids, st.session_state.get('token'), report_filter_type)
+                    
+                    if report_data:
+                        df_report = pd.DataFrame(report_data)
+                        st.success("✅ Relatório gerado com sucesso!")
+                        st.dataframe(df_report)
+                        
+                        # Exportar Excel
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                            df_report.to_excel(writer, index=False, sheet_name="Relatório de Fases")
+                            
+                        st.download_button(
+                            label="📤 Baixar Relatório em Excel",
+                            data=output.getvalue(),
+                            file_name="relatorio_fases.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.info("ℹ️ Nenhum dado encontrado para os IDs e filtros fornecidos.")
+                except Exception as e:
+                    st.error("❌ Erro ao gerar o relatório.")
+                    st.exception(e)
+
+st.markdown("---")
+
 # Entradas principais
-token = st.text_input("🔐 Token de Acesso (Bearer)", type="password")
+token = st.text_input("🔐 Token de Acesso (Bearer)", type="password", key="token_input")
+if token:
+    st.session_state['token'] = token
+    
 query_names = list(saved_queries.keys())
 selected_query = st.selectbox("📂 Escolher uma query salva", [""] + query_names)
 query_text = saved_queries.get(selected_query, "")
@@ -57,12 +111,12 @@ with st.expander("⚙️ Configurações Avançadas"):
 
 # Executar a query
 if st.button("▶️ Executar Query"):
-    if not token or not edited_query.strip():
+    if not st.session_state.get('token') or not edited_query.strip():
         st.warning("⚠️ Token e query são obrigatórios.")
     else:
         try:
             with st.spinner("🔄 Executando query..."):
-                result = execute_graphql_query(edited_query, token)
+                result = execute_graphql_query(edited_query, st.session_state.get('token'))
             st.success("✅ Query executada com sucesso.")
 
             with st.expander("🔍 Logs de Execução"):

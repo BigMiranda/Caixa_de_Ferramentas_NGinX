@@ -108,3 +108,135 @@ def flatten_record_with_lists(record, parent_key='', sep='_', list_field_limit=6
         else:
             items[new_key] = v
     return dict(items), dict(sub_tables)
+
+def get_pipe_phases(pipe_id, token):
+    """
+    Busca todas as fases de um pipe específico na API do Pipefy.
+
+    Args:
+        pipe_id (str): O ID do pipe.
+        token (str): O token de acesso Bearer para autenticação.
+
+    Returns:
+        dict: Um dicionário com o nome do pipe e uma lista de suas fases.
+    """
+    query = f"""
+    query {{
+      pipe(id: "{pipe_id}") {{
+        name
+        phases {{
+          id
+          name
+        }}
+      }}
+    }}
+    """
+    try:
+        result = execute_graphql_query(query, token)
+        pipe_data = result.get("data", {}).get("pipe", {})
+        return {
+            "name": pipe_data.get("name", "Nome do Pipe"),
+            "phases": pipe_data.get("phases", [])
+        }
+    except Exception as e:
+        print(f"Erro ao buscar fases para o pipe {pipe_id}: {e}")
+        return {"name": "Nome do Pipe", "phases": []}
+
+def generate_phase_report(card_ids, token, filter_type):
+    """
+    Gera um relatório de fases e pipes de cards conectados, com filtro por pipe.
+
+    Este é o método principal para a geração do relatório. Ele:
+    1. Obtém os cards conectados para cada ID fornecido, incluindo o nome e ID da fase.
+    2. Identifica os pipes únicos desses cards.
+    3. Para cada pipe único, busca todas as suas fases para verificar se ele se enquadra no filtro.
+    4. Filtra os pipes com base nas regras de nome de fase ("Mudança..." ou "Desistências").
+    5. Consolida as fases *dos cards originais* que pertencem aos pipes filtrados.
+
+    Args:
+        card_ids (list): Uma lista de IDs de card para buscar.
+        token (str): O token de acesso Bearer para autenticação.
+        filter_type (str): O tipo de filtro a ser aplicado ("Nenhum Filtro", "Mudança de Embarque" ou "Desistências").
+
+    Returns:
+        list: Uma lista de dicionários, onde cada dicionário representa uma linha do relatório.
+    """
+    
+    # 1. Obter cards conectados para cada ID fornecido
+    all_connected_cards = []
+    card_query_template = """
+    query {{
+      card(id: "{}") {{
+        parent_relations {{
+          cards {{
+            id
+            pipe {{
+              id
+              name
+            }}
+            current_phase {{
+              id
+              name
+            }}
+          }}
+        }}
+      }}
+    }}
+    """
+    for card_id in card_ids:
+        try:
+            query = card_query_template.format(card_id.strip())
+            result = execute_graphql_query(query, token)
+            connected_cards = extract_nested_lists(result.get("data", {}))
+            all_connected_cards.extend(connected_cards)
+        except Exception as e:
+            print(f"Erro ao processar o card ID {card_id}: {e}")
+            continue
+
+    # 2. Identificar pipes únicos para buscar todas as suas fases
+    unique_pipe_ids = set(card.get("pipe", {}).get("id") for card in all_connected_cards if card.get("pipe", {}).get("id"))
+    
+    # Dicionário para armazenar todos os pipes que passam no filtro
+    filtered_pipes = {}
+    
+    for pipe_id in unique_pipe_ids:
+        pipe_data = get_pipe_phases(pipe_id, token)
+        if pipe_data:
+            phases = pipe_data["phases"]
+            
+            should_include_pipe = False
+            
+            if filter_type == "Nenhum Filtro":
+                should_include_pipe = True
+            else:
+                for phase in phases:
+                    phase_name = phase.get("name", "")
+                    if filter_type == "Mudança de Embarque" and phase_name.startswith("Mudança") and phase_name.endswith("Embarque"):
+                        should_include_pipe = True
+                        break
+                    elif filter_type == "Desistências" and phase_name.startswith("Desist"):
+                        should_include_pipe = True
+                        break
+            
+            if should_include_pipe:
+                filtered_pipes[pipe_id] = pipe_data["name"]
+
+    # 3. Construir o relatório final apenas com as fases dos cards que pertencem aos pipes filtrados
+    final_report = []
+    processed_phases = set()
+    
+    for card in all_connected_cards:
+        pipe_id = card.get("pipe", {}).get("id")
+        phase_id = card.get("current_phase", {}).get("id")
+        
+        # Garante que a fase não seja duplicada no relatório final
+        if pipe_id in filtered_pipes and (pipe_id, phase_id) not in processed_phases:
+            final_report.append({
+                "Pipe ID": pipe_id,
+                "Pipe Nome": filtered_pipes[pipe_id],
+                "Fase ID": phase_id,
+                "Fase Nome": card.get("current_phase", {}).get("name")
+            })
+            processed_phases.add((pipe_id, phase_id))
+            
+    return final_report
