@@ -68,6 +68,16 @@ with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
                             file_name="relatorio_fases.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
+                        
+                        # Exportar CSV
+                        csv_output = df_report.to_csv(index=False)
+                        st.download_button(
+                            label="📥 Baixar Relatório em CSV",
+                            data=csv_output,
+                            file_name="relatorio_fases.csv",
+                            mime="text/csv"
+                        )
+                        
                     else:
                         st.info("ℹ️ Nenhum dado encontrado para os IDs e filtros fornecidos.")
                 except Exception as e:
