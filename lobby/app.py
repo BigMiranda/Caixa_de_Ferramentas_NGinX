@@ -16,7 +16,7 @@ Este projeto gera senhas e hashes usando Streamlit e BCrypt. Ele permite gerar s
         "link": "http://localhost/password-app/"
     },
     {
-        "titulo": "Executor de Queries de busca de cards conectados via GraphQL do Pipefy com Subtabelas",
+        "titulo": "Executor de Queries de busca de cards conectados via GraphQL do Pipefy com Subtabelas (Report Generator)",
         "descricao": """
 Este projeto permite a execução de **queries GraphQL genéricas** contra a API do Pipefy, com foco em análise de dados estruturados. A aplicação identifica listas aninhadas automaticamente (como `parent_relations.cards`) e trata campos complexos de forma inteligente, exibindo os dados em tabelas interativas e exportáveis em Excel.
 
@@ -37,7 +37,7 @@ Este projeto foi desenvolvido para automatizar a execução de mutações em lot
         "link": "http://localhost/mutations-app/"
     },
     {
-        "titulo": "Analisador de Strings (textos) Avançado",
+        "titulo": "Analisador de Strings (textos) Avançado (Contador, Comparador e Limpeza)",
         "descricao": """
 Uma ferramenta multifuncional para análise de texto. Permite contagem em tempo real de caracteres, palavras e linhas, além de análises avançadas de frequência, inspeção de caracteres e limpeza de texto.
 """,
