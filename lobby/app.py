@@ -1,6 +1,7 @@
 import streamlit as st
 
 # Título do Lobby
+st.set_page_config(page_title="Caixa de Ferramentas", layout="wide")
 st.title("Projeto Caixa de Ferramentas")
 
 # Descrição geral

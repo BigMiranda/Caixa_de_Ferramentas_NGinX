@@ -7,6 +7,7 @@ import io
 st.set_page_config(layout="wide")
 
 # Título da aplicação
+st.set_page_config(page_title="Analisador de Strings", layout="wide")
 st.title("Analisador de Strings")
 
 # Explicação da ferramenta

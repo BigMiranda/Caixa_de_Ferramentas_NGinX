@@ -87,6 +87,7 @@ def execute_batches(bearer_token, super_lotes):
 
 
 # Configuração do Streamlit
+st.set_page_config(page_title="Executador de Mutations Pipefy", layout="wide")
 st.title("Executador de Mutations do Pipefy")
 
 # Campo para o Bearer Token
