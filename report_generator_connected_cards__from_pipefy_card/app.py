@@ -4,7 +4,15 @@ import json
 import re
 from io import BytesIO
 from pathlib import Path
-from pipefy_utils import execute_graphql_query, extract_nested_lists, flatten_record_with_lists, generate_phase_report, get_pipe_phases, get_connected_cards_with_mandatory_fields, generate_final_phase_report
+from pipefy_utils import (
+    execute_graphql_query, 
+    extract_nested_lists, 
+    flatten_record_with_lists, 
+    generate_phase_report, 
+    get_pipe_phases, 
+    get_connected_cards_with_mandatory_fields, 
+    generate_final_phase_report
+)
 
 st.set_page_config(page_title="Pipefy Query Runner", layout="wide")
 st.title("📊 Executor de Query GraphQL (Pipefy) com Suporte a Subtabelas")
@@ -23,9 +31,17 @@ token = st.text_input("🔐 Token de Acesso (Bearer)", type="password", key="tok
 if token:
     st.session_state['token'] = token
 
+# NOVO: Radio Button para inclusão dos cards originais
+include_original_cards = st.radio(
+    "Incluir cards de origem nos relatórios de cards conectados?",
+    options=["Sim", "Não"],
+    index=0,  # 'Sim' por padrão
+    key="include_original_cards"
+) == "Sim"
+
 st.markdown("---")
 
-# Seção de Relatório
+# Seção de Relatório de Fases de Cards Conectados
 with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
     st.markdown("Use esta função para gerar um relatório consolidado das fases únicas dos cards conectados.")
     report_card_ids_text = st.text_area("IDs dos Cards (um por linha)", key="report_card_ids")
@@ -50,7 +66,12 @@ with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
             else:
                 try:
                     with st.spinner("🔄 Gerando relatório..."):
-                        report_data = generate_phase_report(card_ids, st.session_state.get('token'), filter_type)
+                        report_data = generate_phase_report(
+                            card_ids, 
+                            st.session_state.get('token'), 
+                            filter_type, 
+                            include_original_cards
+                        )
                     
                     if report_data:
                         df_report = pd.DataFrame(report_data)
@@ -90,9 +111,9 @@ with st.expander("📝 Gerar Relatório de Fases de Cards Conectados"):
 
 st.markdown("---")
 
-# Nova seção de Relatório de Campos Obrigatórios
-with st.expander("📝 Gerar Relatório de Cards com Campos Obrigatórios"):
-    st.markdown("Use esta função para encontrar todos os cards conectados que estão em fases com campos obrigatórios.")
+# Seção de Relatório de Cards com Campos Obrigatórios
+with st.expander("📝 Gerar Relatório de Cards com Campos Obrigatórios (Excluindo Pipe ID 302440540)"):
+    st.markdown("Encontra cards conectados em fases com campos obrigatórios, **excluindo o Pipe ID 302440540**.")
     mandatory_report_card_ids = st.text_area("IDs dos Cards (um por linha)", key="mandatory_report_card_ids")
     
     if st.button("▶️ Gerar Relatório de Obrigatórios"):
@@ -107,7 +128,11 @@ with st.expander("📝 Gerar Relatório de Cards com Campos Obrigatórios"):
             else:
                 try:
                     with st.spinner("🔄 Gerando relatório..."):
-                        report_data = get_connected_cards_with_mandatory_fields(card_ids, st.session_state.get('token'))
+                        report_data = get_connected_cards_with_mandatory_fields(
+                            card_ids, 
+                            st.session_state.get('token'),
+                            include_original_cards
+                        )
                     
                     if report_data:
                         df_report = pd.DataFrame(report_data)
@@ -126,14 +151,14 @@ with st.expander("📝 Gerar Relatório de Cards com Campos Obrigatórios"):
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
                     else:
-                        st.info("ℹ️ Nenhum dado encontrado para os IDs fornecidos.")
+                        st.info("ℹ️ Nenhum dado encontrado para os IDs fornecidos ou foram excluídos pelo filtro de pipe.")
                 except Exception as e:
                     st.error("❌ Erro ao gerar o relatório.")
                     st.exception(e)
 
 st.markdown("---")
 
-# Nova seção de Relatório de Fases Finais
+# Seção de Relatório de Fases Finais
 with st.expander("📝 Gerar Relatório com IDs de Fases Finais"):
     st.markdown("Use esta função para encontrar os IDs de fases finais ('Mudança de Embarque' ou 'Desistências') para cada card conectado.")
     special_phase_card_ids = st.text_area("IDs dos Cards (um por linha)", key="special_phase_card_ids")
@@ -158,7 +183,12 @@ with st.expander("📝 Gerar Relatório com IDs de Fases Finais"):
             else:
                 try:
                     with st.spinner("🔄 Gerando IDs de fases..."):
-                        report_data = generate_final_phase_report(card_ids, st.session_state.get('token'), special_phase_filter_type)
+                        report_data = generate_final_phase_report(
+                            card_ids, 
+                            st.session_state.get('token'), 
+                            special_phase_filter_type,
+                            include_original_cards
+                        )
                     
                     if report_data:
                         df_report = pd.DataFrame(report_data)
