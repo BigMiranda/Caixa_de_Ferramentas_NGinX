@@ -46,7 +46,10 @@ def update_log(log_message):
     log_text = "\n".join(st.session_state['log'])
     
     # A chave única será baseada em timestamp para evitar duplicação
-    log_placeholder.text_area("Log de Execução", value=log_text, height=300, max_chars=None, key=f"log_area_{time.time()}", disabled=True)
+    # Usamos o placeholder definido na UI principal
+    if 'log_placeholder' in st.session_state:
+        log_placeholder = st.session_state['log_placeholder']
+        log_placeholder.text_area("Log de Execução", value=log_text, height=300, max_chars=None, key=f"log_area_{time.time()}", disabled=True)
 
 # Função para mostrar todos os previews em compartimentos expansíveis
 def show_all_previews(super_lotes):
@@ -60,7 +63,8 @@ def show_all_previews(super_lotes):
                         st.code(sub_lote, language='graphql')
 
 # Função para executar os sub-lotes com razão de progresso
-def execute_batches(bearer_token, super_lotes):
+# Agora aceita 'delay_time' para pausar entre as requisições
+def execute_batches(bearer_token, super_lotes, delay_time):
     total_sub_lotes = sum(len(batch) for batch in super_lotes)  # Total de sub-lotes
     executed_sub_lotes = 0  # Contador de sub-lotes executados
 
@@ -79,11 +83,30 @@ def execute_batches(bearer_token, super_lotes):
             update_log(f"Progresso: {executed_sub_lotes}/{total_sub_lotes} ({progress:.2f}%)")
             
             response = execute_graphql_mutation(bearer_token, batch)
+            
+            # --- VERIFICAÇÃO DE ERRO MELHORADA ---
             if response.status_code == 200:
-                update_log(f"Sub-Lote {i + 1}-{idx + 1} : Executado com sucesso!")
+                try:
+                    data = response.json()
+                    if "errors" in data:
+                        # Erro de GraphQL detectado (operação falhou, mas HTTP foi 200)
+                        error_message = json.dumps(data["errors"], indent=2)
+                        update_log(f"Sub-Lote {i + 1}-{idx + 1} : Erro de GraphQL (Status 200) - {error_message}")
+                    else:
+                        # Execução bem-sucedida
+                        update_log(f"Sub-Lote {i + 1}-{idx + 1} : Executado com sucesso!")
+                except json.JSONDecodeError:
+                    # Resposta não é JSON, o que pode indicar um problema inesperado no Pipefy
+                    update_log(f"Sub-Lote {i + 1}-{idx + 1} : Erro - Resposta HTTP 200, mas corpo inesperado ou não JSON: {response.text}")
+
             else:
-                update_log(f"Sub-Lote {i + 1}-{idx + 1} : Erro - {response.text}")
-            time.sleep(1)  # Pausa para evitar sobrecarga nas requisições
+                # Erro HTTP tradicional (4xx, 5xx, etc.)
+                update_log(f"Sub-Lote {i + 1}-{idx + 1} : Erro HTTP ({response.status_code}) - {response.text}")
+            
+            # Pausa configurável para evitar sobrecarga (controle de rate-limit)
+            if delay_time > 0:
+                update_log(f"Pausando por {delay_time}s...")
+                time.sleep(delay_time) 
 
 
 # Configuração do Streamlit
@@ -97,18 +120,30 @@ bearer_token = st.text_input("Digite o seu Bearer Token", type="password")
 mutation_query = st.text_area("Cole sua query GraphQL completa aqui", height=300)
 
 # Tamanho do lote (alterando o valor padrão para 25)
-batch_size = st.slider("Selecione o tamanho do lote de mutations", min_value=1, max_value=50, value=25)
+batch_size = st.slider("Selecione o tamanho do lote de mutations (Sub-Lote)", min_value=1, max_value=50, value=25)
 
-#MM - dobro o tamanho batch_size para orrigir mecânica.
+# MM - dobro o tamanho batch_size para corrigir mecânica.
 batch_size = 2 * batch_size
 
-# Criar o componente vazio para o log
+# NOVO CAMPO: Tempo de pausa entre sub-lotes
+delay_time = st.slider("Tempo de Pausa (segundos) entre sub-lotes", min_value=0.0, max_value=5.0, value=0.5, step=0.1, key='delay_time_slider')
+
+# Criar o componente vazio para o log e armazená-lo na session_state
+# Isso é necessário para que a função update_log possa acessá-lo.
 log_placeholder = st.empty()
+st.session_state['log_placeholder'] = log_placeholder
 
 # Botão para processar e mostrar todos os previews
 if st.button("Mostrar Preview"):
-    super_lotes = partition_query(mutation_query, batch_size)
-    show_all_previews(super_lotes)
+    if mutation_query:
+        try:
+            super_lotes = partition_query(mutation_query, batch_size)
+            show_all_previews(super_lotes)
+        except Exception as e:
+             st.error(f"Erro ao processar a query: {e}. Verifique a sintaxe da sua query.")
+    else:
+        st.warning("Por favor, cole sua query GraphQL completa.")
+
 
 # Botão para iniciar a execução dos batches
 if st.button("Iniciar Execução"):
@@ -116,12 +151,22 @@ if st.button("Iniciar Execução"):
         st.error("Por favor, preencha o Bearer Token e a Query!")
     else:
         update_log("Iniciando execução...")
-        super_lotes = partition_query(mutation_query, batch_size)
-        execute_batches(bearer_token, super_lotes)
+        
+        try:
+            super_lotes = partition_query(mutation_query, batch_size)
+            
+            # Passando o delay_time para a função de execução
+            execute_batches(bearer_token, super_lotes, delay_time)
+            
+        except Exception as e:
+             update_log(f"ERRO CRÍTICO NA EXECUÇÃO: {e}")
+             st.error(f"Erro crítico: {e}")
+
 
 # Exibição do log (dinâmico e atualizado)
 if 'log' in st.session_state:
     log_text = "\n".join(st.session_state['log'])
-    log_placeholder.text_area("Log de Execução", value=log_text, height=300, max_chars=None, key=f"log_area_{time.time()}", disabled=True)
+    # Usa o placeholder para atualização final (o update_log cuida das atualizações intermediárias)
+    st.session_state['log_placeholder'].text_area("Log de Execução", value=log_text, height=300, max_chars=None, key=f"log_area_final", disabled=True)
 else:
-    log_placeholder.text_area("Log de Execução", value="Nenhum log gerado ainda.", height=300, max_chars=None, key=f"log_area_{time.time()}", disabled=True)
+    st.session_state['log_placeholder'].text_area("Log de Execução", value="Nenhum log gerado ainda.", height=300, max_chars=None, key=f"log_area_init", disabled=True)
