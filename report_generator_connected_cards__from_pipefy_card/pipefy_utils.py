@@ -2,6 +2,8 @@ import requests
 from collections import defaultdict
 import json
 import re
+# Importação da biblioteca para IO (não usada diretamente aqui, mas boa prática)
+# from io import BytesIO 
 
 def normalize_string(text):
     """
@@ -26,20 +28,6 @@ def normalize_string(text):
 def execute_graphql_query(query, token):
     """
     Executa uma query GraphQL na API do Pipefy e lida com a resposta.
-
-    Esta função faz a chamada HTTP para a API do Pipefy usando um token de acesso
-    e uma query GraphQL. É a função central para comunicação com o serviço.
-
-    Args:
-        query (str): A string da query GraphQL a ser executada.
-        token (str): O token de acesso Bearer para autenticação.
-
-    Returns:
-        dict: O resultado da requisição em formato JSON, se bem-sucedida.
-    
-    Raises:
-        requests.exceptions.HTTPError: Se a resposta da API for um erro HTTP.
-        Exception: Para outros erros inesperados na execução.
     """
     headers = {
         "Authorization": f"Bearer {token}",
@@ -52,15 +40,6 @@ def execute_graphql_query(query, token):
 def extract_nested_lists(obj):
     """
     Extrai listas aninhadas, como `cards`, da resposta bruta da API de forma recursiva.
-
-    Esta função percorre a resposta JSON para encontrar e consolidar todas as listas
-    de `cards` aninhadas, tornando-as mais fáceis de processar na aplicação.
-
-    Args:
-        obj (dict or list): O objeto (resposta JSON da API) a ser inspecionado.
-
-    Returns:
-        list: Uma lista consolidada de todos os dicionários de cards encontrados.
     """
     collected_cards = []
     if isinstance(obj, dict):
@@ -76,16 +55,6 @@ def extract_nested_lists(obj):
 def flatten_record_with_lists(record, parent_key='', sep='_', list_field_limit=6):
     """
     Achata um registro aninhado em um dicionário de nível único.
-
-    Args:
-        record (dict): O registro a ser achatado.
-        parent_key (str, opcional): A chave pai para prefixar as novas chaves.
-        sep (str, opcional): Separador entre as chaves aninhadas.
-        list_field_limit (int, opcional): Limite de colunas para achatamento de listas.
-
-    Returns:
-        tuple: Uma tupla contendo o dicionário achatado (tabela principal) e um
-               dicionário de subtabelas.
     """
     items = {}
     sub_tables = defaultdict(list)
@@ -155,13 +124,6 @@ def get_pipe_phases(pipe_id, token):
 def get_card_details(card_id, token):
     """
     Busca detalhes essenciais de um único card.
-    
-    Args:
-        card_id (str): O ID do card.
-        token (str): O token de acesso Bearer para autenticação.
-
-    Returns:
-        dict: Dados do card (id, title, pipe, current_phase) ou None.
     """
     query = f"""
     query {{
@@ -175,6 +137,21 @@ def get_card_details(card_id, token):
         current_phase {{
           id
           name
+        }}
+        # Adicionado parent_relations para a função de relatórios
+        parent_relations {{
+          cards {{
+            id
+            title
+            pipe {{
+              id
+              name
+            }}
+            current_phase {{
+              id
+              name
+            }}
+          }}
         }}
       }}
     }}
@@ -217,65 +194,51 @@ def get_connected_cards_for_report(card_ids, token, include_original_cards):
     """
     all_connected_cards = []
     
-    # 1A. Incluir cards de origem
-    if include_original_cards:
-        for card_id in card_ids:
-            original_card_data = get_card_details(card_id.strip(), token)
-            if original_card_data:
-                all_connected_cards.append(original_card_data)
-                
-    # 1B. Obter cards conectados
-    card_query_template = """
-    query {{
-      card(id: "{}") {{
-        title
-        parent_relations {{
-          cards {{
-            id
-            title
-            pipe {{
-              id
-              name
-            }}
-            current_phase {{
-              id
-              name
-            }}
-          }}
-        }}
-      }}
-    }}
-    """
+    # Usar um set para garantir unicidade dos cards conectados
+    unique_connected_cards = {}
+    
     for card_id in card_ids:
-        try:
-            query = card_query_template.format(card_id.strip())
-            result = execute_graphql_query(query, token)
-            connected_cards = extract_nested_lists(result.get("data", {}))
-            all_connected_cards.extend(connected_cards)
-        except Exception as e:
-            print(f"Erro ao processar o card ID {card_id}: {e}")
+        card_id = card_id.strip()
+        if not card_id:
             continue
             
-    return all_connected_cards
+        try:
+            # Busca detalhes do card principal
+            original_card_data = get_card_details(card_id, token)
+            
+            if original_card_data:
+                # 1A. Incluir cards de origem
+                if include_original_cards:
+                    # Remove a relação de cards conectados para não duplicar na extração
+                    temp_card = original_card_data.copy()
+                    temp_card.pop("parent_relations", None) 
+                    unique_connected_cards[temp_card["id"]] = temp_card
+                
+                # 1B. Obter cards conectados (via parent_relations)
+                connected_cards = extract_nested_lists(original_card_data)
+                
+                for card in connected_cards:
+                    if card and card.get("id"):
+                        unique_connected_cards[card["id"]] = card
+
+        except Exception as e:
+            # Imprimir o erro aqui para fins de diagnóstico
+            print(f"Erro ao processar o card ID {card_id} ou seus conectados: {e}")
+            continue
+            
+    return list(unique_connected_cards.values())
+
 
 def generate_phase_report(card_ids, token, filter_type, include_original_cards):
     """
     Gera um relatório de fases e pipes de cards conectados, com filtro por pipe.
-
-    Args:
-        card_ids (list): Uma lista de IDs de card para buscar.
-        token (str): O token de acesso Bearer para autenticação.
-        filter_type (str): O tipo de filtro a ser aplicado ("Nenhum Filtro", "Mudança de Embarque", "Limpeza" ou "Desistências").
-        include_original_cards (bool): Se deve incluir os cards de origem no relatório.
-
-    Returns:
-        list: Uma lista de dicionários, onde cada dicionário representa uma linha do relatório.
+    (Relatório 1)
     """
     
     all_connected_cards = get_connected_cards_for_report(card_ids, token, include_original_cards)
 
     # 2. Identificar pipes únicos e aplicar filtro
-    unique_pipe_ids = set(card.get("pipe", {}).get("id") for card in all_connected_cards if card.get("pipe", {}).get("id"))
+    unique_pipe_ids = set(card.get("pipe", {}).get("id") for card in all_connected_cards if card and card.get("pipe", {}).get("id"))
     filtered_pipes = {}
     
     for pipe_id in unique_pipe_ids:
@@ -305,7 +268,7 @@ def generate_phase_report(card_ids, token, filter_type, include_original_cards):
         phase_id = card.get("current_phase", {}).get("id")
         
         # Garante que a fase não seja duplicada no relatório final e pertence a um pipe filtrado
-        if pipe_id in filtered_pipes and (pipe_id, phase_id) not in processed_phases:
+        if pipe_id in filtered_pipes and phase_id and (pipe_id, phase_id) not in processed_phases:
             final_report.append({
                 "Pipe ID": pipe_id,
                 "Pipe Nome": filtered_pipes[pipe_id],
@@ -340,15 +303,7 @@ def check_phase_for_mandatory_fields(phase_id, token):
 def get_connected_cards_with_mandatory_fields(card_ids, token, include_original_cards):
     """
     Obtém uma lista de cards conectados cujas fases possuem campos obrigatórios.
-    **EXCLUI O PIPE ID "302440540"**
-
-    Args:
-        card_ids (list): Uma lista de IDs de card para buscar.
-        token (str): O token de acesso Bearer para autenticação.
-        include_original_cards (bool): Se deve incluir os cards de origem no relatório.
-
-    Returns:
-        list: Uma lista de dicionários, onde cada dicionário representa um card conectado que passou no filtro.
+    **EXCLUI O PIPE ID "302440540"** (Relatório 2)
     """
     
     all_connected_cards = get_connected_cards_for_report(card_ids, token, include_original_cards)
@@ -394,16 +349,7 @@ def get_connected_cards_with_mandatory_fields(card_ids, token, include_original_
 def generate_final_phase_report(card_ids, token, filter_type, include_original_cards):
     """
     Gera um relatório de cards conectados, incluindo a fase de fim de processo
-    (Mudança de Embarque, Limpeza ou Desistências).
-
-    Args:
-        card_ids (list): Uma lista de IDs de card para buscar.
-        token (str): O token de acesso Bearer para autenticação.
-        filter_type (str): O tipo de filtro a ser aplicado (ex: "Mudança de Embarque").
-        include_original_cards (bool): Se deve incluir os cards de origem no relatório.
-
-    Returns:
-        list: Uma lista de dicionários, onde cada dicionário representa uma linha do relatório.
+    (Mudança de Embarque, Limpeza ou Desistências). (Relatório 3/Verificação)
     """
     
     pipe_phases_cache = {}
@@ -425,7 +371,7 @@ def generate_final_phase_report(card_ids, token, filter_type, include_original_c
 
             phases_of_pipe = pipe_phases_cache[pipe_id]
             
-            # Encontra a fase de "fim de processo"
+            # Encontra a fase de "fim de processo" (baseado no filter_type)
             for phase in phases_of_pipe:
                 phase_name = phase.get("name", "")
                 
@@ -443,7 +389,7 @@ def generate_final_phase_report(card_ids, token, filter_type, include_original_c
             "Fase Atual Nome": card.get("current_phase", {}).get("name"),
             "ID da Fase de Fim de Processo": end_phase_id,
             "Nome da Fase de Fim de Processo": end_phase_name,
-            # Campo auxiliar para ordenação (Item 1)
+            # Campo auxiliar para ordenação
             "Pipe Normalizado": normalize_string(card.get("pipe", {}).get("name", ""))
         })
             
@@ -483,11 +429,14 @@ def get_phase_transitions(phase_id, token):
 def get_phase_movement_report_generic(card_ids, token, include_original_cards):
     """
     Relatório genérico de todas as opções de movimentação de fases para cards conectados.
-    Cada linha representa uma opção de transição.
+    (Relatório 4)
     """
     all_connected_cards = get_connected_cards_for_report(card_ids, token, include_original_cards)
     report = []
     phase_transition_cache = {}
+
+    if not all_connected_cards:
+        return report 
 
     for card in all_connected_cards:
         current_phase = card.get("current_phase", {})
@@ -498,26 +447,30 @@ def get_phase_movement_report_generic(card_ids, token, include_original_cards):
 
         phase_id = current_phase["id"]
 
+        # Busca do cache ou API
         if phase_id not in phase_transition_cache:
-            phase_transition_cache[phase_id] = get_phase_transitions(phase_id, token)
+            transitions_data = get_phase_transitions(phase_id, token)
+            phase_transition_cache[phase_id] = transitions_data
 
         transitions_data = phase_transition_cache[phase_id]
         
-        for transition in transitions_data["transitions"]:
-            to_phase = transition.get("to_phase", {})
-            report.append({
-                "Card ID": card.get("id"),
-                "Card Título": card.get("title"),
-                "Pipe ID": pipe.get("id"),
-                "Pipe Nome": pipe.get("name"),
-                "Fase Atual ID": phase_id,
-                "Fase Atual Nome": current_phase.get("name"),
-                "Transição ID": transition.get("id"),
-                "Transição Nome": transition.get("name"),
-                "Fase Destino ID": to_phase.get("id"),
-                "Fase Destino Nome": to_phase.get("name"),
-                "Habilitada": "Sim" if transition.get("can_move_to") else "Não"
-            })
+        # Correção do Relatório 4: Garantir que a iteração ocorra se houver dados
+        if transitions_data and transitions_data.get("transitions"):
+            for transition in transitions_data["transitions"]:
+                to_phase = transition.get("to_phase", {})
+                report.append({
+                    "Card ID": card.get("id"),
+                    "Card Título": card.get("title"),
+                    "Pipe ID": pipe.get("id"),
+                    "Pipe Nome": pipe.get("name"),
+                    "Fase Atual ID": phase_id,
+                    "Fase Atual Nome": current_phase.get("name"),
+                    "Transição ID": transition.get("id"),
+                    "Transição Nome": transition.get("name"),
+                    "Fase Destino ID": to_phase.get("id"),
+                    "Fase Destino Nome": to_phase.get("name"),
+                    "Habilitada": "Sim" if transition.get("can_move_to") else "Não"
+                })
             
     return report
 
@@ -525,6 +478,7 @@ def get_phase_movement_report_filtered(card_ids, token, include_original_cards, 
     """
     Relatório de movimentações para as fases de "Desativação" (Mudança, Limpeza, Desistências),
     excluindo transições de pipes que já estão em uma fase de desativação.
+    (Relatório 5/Verificação)
     """
     
     # 1. Gerar o relatório genérico
@@ -545,7 +499,7 @@ def get_phase_movement_report_filtered(card_ids, token, include_original_cards, 
         if not is_target_destination:
             continue # Se não for o destino que estamos verificando, ignorar
 
-        # 3. Regra de Exclusão (Item 2):
+        # 3. Regra de Exclusão:
         # Excluir se a FASE ATUAL já é uma das fases de desativação (Limpeza/Desistências/Mudança de Embarque).
         is_current_phase_already_deactivation = any(
             check_phase_match(current_phase_name, deactivation_filter) 
