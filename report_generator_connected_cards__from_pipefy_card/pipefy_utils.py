@@ -186,36 +186,53 @@ def get_card_details(card_id, token):
         print(f"Erro ao buscar detalhes do card {card_id}: {e}")
         return None
 
-def generate_phase_report(card_ids, token, filter_type, include_original_cards):
+def check_phase_match(phase_name, filter_type):
     """
-    Gera um relatório de fases e pipes de cards conectados, com filtro por pipe.
-
-    Args:
-        card_ids (list): Uma lista de IDs de card para buscar.
-        token (str): O token de acesso Bearer para autenticação.
-        filter_type (str): O tipo de filtro a ser aplicado ("Nenhum Filtro", "Mudança de Embarque" ou "Desistências").
-        include_original_cards (bool): Se deve incluir os cards de origem no relatório.
-
-    Returns:
-        list: Uma lista de dicionários, onde cada dicionário representa uma linha do relatório.
+    Verifica se o nome da fase corresponde ao tipo de filtro (Mudança, Desistências ou Limpeza),
+    ignorando acentos e capitalização.
     """
+    if not isinstance(phase_name, str):
+        return False
+        
+    norm_phase_name = normalize_string(phase_name)
     
-    all_connected_cards = []
+    if filter_type == "Mudança de Embarque":
+        norm_target = normalize_string("Mudança de Embarque")
+        return norm_target in norm_phase_name
+    
+    elif filter_type == "Desistências":
+        # Usa 'desist' para pegar 'Desistência' e 'Desistências'
+        norm_target = normalize_string("Desist") 
+        return norm_phase_name.startswith(norm_target)
+        
+    elif filter_type == "Limpeza":
+        norm_target = normalize_string("Limpeza")
+        return norm_target in norm_phase_name
+        
+    return False
 
-    # 1A. Incluir cards de origem se solicitado
+def get_connected_cards_for_report(card_ids, token, include_original_cards):
+    """
+    Função auxiliar para obter todos os cards conectados de uma lista de IDs de card.
+    """
+    all_connected_cards = []
+    
+    # 1A. Incluir cards de origem
     if include_original_cards:
         for card_id in card_ids:
             original_card_data = get_card_details(card_id.strip(), token)
             if original_card_data:
                 all_connected_cards.append(original_card_data)
-
+                
     # 1B. Obter cards conectados
     card_query_template = """
     query {{
       card(id: "{}") {{
+        title
         parent_relations {{
           cards {{
             id
+            title
             pipe {{
               id
               name
@@ -238,14 +255,28 @@ def generate_phase_report(card_ids, token, filter_type, include_original_cards):
         except Exception as e:
             print(f"Erro ao processar o card ID {card_id}: {e}")
             continue
+            
+    return all_connected_cards
+
+def generate_phase_report(card_ids, token, filter_type, include_original_cards):
+    """
+    Gera um relatório de fases e pipes de cards conectados, com filtro por pipe.
+
+    Args:
+        card_ids (list): Uma lista de IDs de card para buscar.
+        token (str): O token de acesso Bearer para autenticação.
+        filter_type (str): O tipo de filtro a ser aplicado ("Nenhum Filtro", "Mudança de Embarque", "Limpeza" ou "Desistências").
+        include_original_cards (bool): Se deve incluir os cards de origem no relatório.
+
+    Returns:
+        list: Uma lista de dicionários, onde cada dicionário representa uma linha do relatório.
+    """
+    
+    all_connected_cards = get_connected_cards_for_report(card_ids, token, include_original_cards)
 
     # 2. Identificar pipes únicos e aplicar filtro
     unique_pipe_ids = set(card.get("pipe", {}).get("id") for card in all_connected_cards if card.get("pipe", {}).get("id"))
     filtered_pipes = {}
-
-    # Normaliza os alvos de filtro
-    norm_target_mudanca = normalize_string("Mudança de Embarque")
-    norm_target_desist = normalize_string("Desist")
     
     for pipe_id in unique_pipe_ids:
         pipe_data = get_pipe_phases(pipe_id, token)
@@ -258,14 +289,7 @@ def generate_phase_report(card_ids, token, filter_type, include_original_cards):
             else:
                 for phase in phases:
                     phase_name = phase.get("name", "")
-                    norm_phase_name = normalize_string(phase_name)
-                    
-                    # FILTRO ROBUSTO: Verifica se o nome normalizado contém o alvo normalizado
-                    if filter_type == "Mudança de Embarque" and norm_target_mudanca in norm_phase_name:
-                        should_include_pipe = True
-                        break
-                    # FILTRO ROBUSTO: Verifica se o nome normalizado começa com o alvo normalizado
-                    elif filter_type == "Desistências" and norm_phase_name.startswith(norm_target_desist):
+                    if check_phase_match(phase_name, filter_type):
                         should_include_pipe = True
                         break
             
@@ -327,46 +351,8 @@ def get_connected_cards_with_mandatory_fields(card_ids, token, include_original_
         list: Uma lista de dicionários, onde cada dicionário representa um card conectado que passou no filtro.
     """
     
-    all_connected_cards = []
+    all_connected_cards = get_connected_cards_for_report(card_ids, token, include_original_cards)
     
-    # 1A. Incluir cards de origem se solicitado
-    if include_original_cards:
-        for card_id in card_ids:
-            original_card_data = get_card_details(card_id.strip(), token)
-            if original_card_data:
-                all_connected_cards.append(original_card_data)
-                
-    # 1B. Obter cards conectados
-    card_query_template = """
-    query {{
-      card(id: "{}") {{
-        parent_relations {{
-          cards {{
-            id
-            title
-            pipe {{
-              id
-              name
-            }}
-            current_phase {{
-              id
-              name
-            }}
-          }}
-        }}
-      }}
-    }}
-    """
-    for card_id in card_ids:
-        try:
-            query = card_query_template.format(card_id.strip())
-            result = execute_graphql_query(query, token)
-            connected_cards = extract_nested_lists(result.get("data", {}))
-            all_connected_cards.extend(connected_cards)
-        except Exception as e:
-            print(f"Erro ao processar o card ID {card_id}: {e}")
-            continue
-
     # 2. Identificar fases únicas e verificar se possuem campos obrigatórios
     unique_phases = {}
     for card in all_connected_cards:
@@ -407,12 +393,13 @@ def get_connected_cards_with_mandatory_fields(card_ids, token, include_original_
 
 def generate_final_phase_report(card_ids, token, filter_type, include_original_cards):
     """
-    Gera um relatório de cards conectados, incluindo a fase de fim de processo.
+    Gera um relatório de cards conectados, incluindo a fase de fim de processo
+    (Mudança de Embarque, Limpeza ou Desistências).
 
     Args:
         card_ids (list): Uma lista de IDs de card para buscar.
         token (str): O token de acesso Bearer para autenticação.
-        filter_type (str): O tipo de filtro a ser aplicado ("Mudança de Embarque" ou "Desistências").
+        filter_type (str): O tipo de filtro a ser aplicado (ex: "Mudança de Embarque").
         include_original_cards (bool): Se deve incluir os cards de origem no relatório.
 
     Returns:
@@ -420,53 +407,10 @@ def generate_final_phase_report(card_ids, token, filter_type, include_original_c
     """
     
     pipe_phases_cache = {}
-    all_connected_cards = []
+    all_connected_cards = get_connected_cards_for_report(card_ids, token, include_original_cards)
     
-    # 1A. Incluir cards de origem se solicitado
-    if include_original_cards:
-        for card_id in card_ids:
-            original_card_data = get_card_details(card_id.strip(), token)
-            if original_card_data:
-                all_connected_cards.append(original_card_data)
-
-    # 1B. Obter cards conectados
-    card_query_template = """
-    query {{
-      card(id: "{}") {{
-        title
-        parent_relations {{
-          cards {{
-            id
-            title
-            pipe {{
-              id
-              name
-            }}
-            current_phase {{
-              id
-              name
-            }}
-          }}
-        }}
-      }}
-    }}
-    """
-    for card_id in card_ids:
-        try:
-            query = card_query_template.format(card_id.strip())
-            result = execute_graphql_query(query, token)
-            connected_cards = extract_nested_lists(result.get("data", {}))
-            all_connected_cards.extend(connected_cards)
-        except Exception as e:
-            print(f"Erro ao processar o card ID {card_id}: {e}")
-            continue
-
     # 2. Construir o relatório final card por card
     final_report = []
-
-    # Normaliza os alvos de filtro
-    norm_target_mudanca = normalize_string("Mudança de Embarque")
-    norm_target_desist = normalize_string("Desist")
     
     for card in all_connected_cards:
         pipe_id = card.get("pipe", {}).get("id")
@@ -484,15 +428,8 @@ def generate_final_phase_report(card_ids, token, filter_type, include_original_c
             # Encontra a fase de "fim de processo"
             for phase in phases_of_pipe:
                 phase_name = phase.get("name", "")
-                norm_phase_name = normalize_string(phase_name)
                 
-                # FILTRO ROBUSTO: Verifica se o nome normalizado contém o alvo normalizado
-                if filter_type == "Mudança de Embarque" and norm_target_mudanca in norm_phase_name:
-                    end_phase_id = phase.get("id", "N/A")
-                    end_phase_name = phase_name
-                    break
-                # FILTRO ROBUSTO: Verifica se o nome normalizado começa com o alvo normalizado
-                elif filter_type == "Desistências" and norm_phase_name.startswith(norm_target_desist):
+                if check_phase_match(phase_name, filter_type):
                     end_phase_id = phase.get("id", "N/A")
                     end_phase_name = phase_name
                     break
@@ -505,7 +442,120 @@ def generate_final_phase_report(card_ids, token, filter_type, include_original_c
             "Fase Atual ID": card.get("current_phase", {}).get("id"),
             "Fase Atual Nome": card.get("current_phase", {}).get("name"),
             "ID da Fase de Fim de Processo": end_phase_id,
-            "Nome da Fase de Fim de Processo": end_phase_name
+            "Nome da Fase de Fim de Processo": end_phase_name,
+            # Campo auxiliar para ordenação (Item 1)
+            "Pipe Normalizado": normalize_string(card.get("pipe", {}).get("name", ""))
         })
             
     return final_report
+
+def get_phase_transitions(phase_id, token):
+    """
+    Busca todas as transições (movimentações) de uma fase específica.
+    """
+    query = f"""
+    query {{
+      phase(id: "{phase_id}") {{
+        name
+        transitions {{
+          id
+          name
+          to_phase {{
+            id
+            name
+          }}
+          can_move_to
+        }}
+      }}
+    }}
+    """
+    try:
+        result = execute_graphql_query(query, token)
+        phase_data = result.get("data", {}).get("phase", {})
+        return {
+            "name": phase_data.get("name"),
+            "transitions": phase_data.get("transitions", [])
+        }
+    except Exception as e:
+        print(f"Erro ao buscar transições para a fase {phase_id}: {e}")
+        return {"name": "N/A", "transitions": []}
+
+def get_phase_movement_report_generic(card_ids, token, include_original_cards):
+    """
+    Relatório genérico de todas as opções de movimentação de fases para cards conectados.
+    Cada linha representa uma opção de transição.
+    """
+    all_connected_cards = get_connected_cards_for_report(card_ids, token, include_original_cards)
+    report = []
+    phase_transition_cache = {}
+
+    for card in all_connected_cards:
+        current_phase = card.get("current_phase", {})
+        pipe = card.get("pipe", {})
+        
+        if not current_phase.get("id"):
+            continue
+
+        phase_id = current_phase["id"]
+
+        if phase_id not in phase_transition_cache:
+            phase_transition_cache[phase_id] = get_phase_transitions(phase_id, token)
+
+        transitions_data = phase_transition_cache[phase_id]
+        
+        for transition in transitions_data["transitions"]:
+            to_phase = transition.get("to_phase", {})
+            report.append({
+                "Card ID": card.get("id"),
+                "Card Título": card.get("title"),
+                "Pipe ID": pipe.get("id"),
+                "Pipe Nome": pipe.get("name"),
+                "Fase Atual ID": phase_id,
+                "Fase Atual Nome": current_phase.get("name"),
+                "Transição ID": transition.get("id"),
+                "Transição Nome": transition.get("name"),
+                "Fase Destino ID": to_phase.get("id"),
+                "Fase Destino Nome": to_phase.get("name"),
+                "Habilitada": "Sim" if transition.get("can_move_to") else "Não"
+            })
+            
+    return report
+
+def get_phase_movement_report_filtered(card_ids, token, include_original_cards, target_filter):
+    """
+    Relatório de movimentações para as fases de "Desativação" (Mudança, Limpeza, Desistências),
+    excluindo transições de pipes que já estão em uma fase de desativação.
+    """
+    
+    # 1. Gerar o relatório genérico
+    generic_report = get_phase_movement_report_generic(card_ids, token, include_original_cards)
+    
+    filtered_report = []
+    
+    # Lista de todos os filtros que indicam uma "fase de desativação"
+    ALL_DEACTIVATION_FILTERS = ["Mudança de Embarque", "Desistências", "Limpeza"]
+
+    for row in generic_report:
+        current_phase_name = row["Fase Atual Nome"]
+        target_phase_name = row["Fase Destino Nome"]
+        
+        # 2. Verificar se a fase destino corresponde ao filtro ALVO
+        is_target_destination = check_phase_match(target_phase_name, target_filter)
+
+        if not is_target_destination:
+            continue # Se não for o destino que estamos verificando, ignorar
+
+        # 3. Regra de Exclusão (Item 2):
+        # Excluir se a FASE ATUAL já é uma das fases de desativação (Limpeza/Desistências/Mudança de Embarque).
+        is_current_phase_already_deactivation = any(
+            check_phase_match(current_phase_name, deactivation_filter) 
+            for deactivation_filter in ALL_DEACTIVATION_FILTERS
+        )
+        
+        if is_current_phase_already_deactivation:
+            continue # Pula as transições de fases que já são alvo de "desativação"
+
+        # Se passou pelos filtros, adicionar ao relatório
+        filtered_report.append(row)
+            
+    return filtered_report
